@@ -45,21 +45,29 @@ const appLogic = {
 
     // --- AUTHENTICATION HANDLERS ---
     showAuthForm(formType) {
+        // Hide both forms
         document.getElementById('loginForm').classList.add('hidden');
         document.getElementById('signupForm').classList.add('hidden');
+        
+        // Remove active class from both tabs
         document.getElementById('loginTab').classList.remove('auth-tab-active');
         document.getElementById('signupTab').classList.remove('auth-tab-active');
         
+        // Hide previous errors
         document.getElementById('loginError').classList.add('hidden');
         document.getElementById('signupError').classList.add('hidden');
 
-
+        // Show the selected form and activate the tab
         if (formType === 'login') {
             document.getElementById('loginForm').classList.remove('hidden');
             document.getElementById('loginTab').classList.add('auth-tab-active');
+            document.getElementById('loginTab').classList.remove('text-gray-500'); // Ensure color is indigo/blue
+            document.getElementById('signupTab').classList.add('text-gray-500');
         } else {
             document.getElementById('signupForm').classList.remove('hidden');
             document.getElementById('signupTab').classList.add('auth-tab-active');
+            document.getElementById('signupTab').classList.remove('text-gray-500'); // Ensure color is indigo/blue
+            document.getElementById('loginTab').classList.add('text-gray-500');
         }
     },
 
