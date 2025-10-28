@@ -1,173 +1,318 @@
-// Global constants defined in index.html (app, auth, db) are available here.
-const TODAY_DATE = getTodayDateString();
+// Global instance variables for Firebase services and tracking state
+let app; // Initialized in index.html
+let auth; // Initialized in index.html
+let db; // Initialized in index.html
 
-// Default application state structure for a single day
-const DEFAULT_DAY_DATA = {
-    academic: { progress: 0, goal: 2 },
-    physical: { progress: 0, goal: 30 },
-    character: { progress: 0, goal: 10, socialCheck: false },
-    mindset: { is100: false },
-};
-
-let currentHistory = {};
-let activePeriod = 'week'; 
-let charts = {};
-let userId = null;
-let isReady = false;
-
-// --- Date & Storage Utility Functions ---
-
-/** Returns the date string in YYYY-MM-DD format */
-function getTodayDateString(date = new Date()) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-}
-
-/** Utility to display messages */
-function showStatusMessage(message, color) {
-    const statusMessage = document.getElementById('statusMessage');
-    statusMessage.textContent = message;
-    statusMessage.className = `fixed top-4 left-1/2 transform -translate-x-1/2 p-3 ${color} text-white rounded-lg shadow-xl z-50 text-sm opacity-100 transition-opacity duration-300`;
-
-    setTimeout(() => {
-        statusMessage.className = statusMessage.className.replace('opacity-100', 'opacity-0');
-        setTimeout(() => statusMessage.classList.add('hidden'), 300);
-    }, 2000);
-    statusMessage.classList.remove('hidden');
-}
-
-/** Shows or hides the loading indicator */
-function setLoading(isLoading) {
-    document.getElementById('loadingIndicator').classList.toggle('hidden', !isLoading);
-}
-
-/**
- * Loads the history from Firestore and sets up a real-time listener.
- */
-function loadHistory() {
-    if (!userId || !isReady) return;
-
-    setLoading(true);
-    
-    // Firestore reference to the user's single history document
-    const docRef = db.collection('userGrowthHistory').doc(userId);
-
-    // Set up real-time listener
-    docRef.onSnapshot(doc => {
-        setLoading(false);
-        if (doc.exists) {
-            currentHistory = doc.data().history || {};
-            showStatusMessage('Progress synced from cloud!', 'bg-green-600');
-        } else {
-            // Document doesn't exist, initialize with current day data
-            currentHistory = {};
-            showStatusMessage('New user data created in cloud.', 'bg-indigo-600');
-        }
-        
-        // Ensure the current day has data, merging defaults if necessary
-        currentHistory[TODAY_DATE] = { ...DEFAULT_DAY_DATA, ...currentHistory[TODAY_DATE] };
-        
-        // Render the UI based on the updated history
-        renderUI();
-    }, error => {
-        setLoading(false);
-        console.error("Firestore listen failed:", error);
-        showStatusMessage('Error listening to progress updates.', 'bg-red-700');
-    });
-}
-
-/**
- * Saves the entire history object to Firestore.
- */
-function saveHistory() {
-    if (!userId || !isReady) {
-        showStatusMessage('App not ready. Data save failed.', 'bg-red-700');
-        return;
-    }
-    
-    // Use set with merge:true to ensure the document structure remains simple
-    db.collection('userGrowthHistory').doc(userId).set({
-        history: currentHistory
-    }, { merge: true })
-    .then(() => {
-        // No status message needed here as onSnapshot handles real-time success
-    })
-    .catch(error => {
-        console.error("Error writing document: ", error);
-        showStatusMessage('Failed to save progress to cloud.', 'bg-red-700');
-    });
-}
-
-// --- Authentication Setup ---
-
-auth.onAuthStateChanged(user => {
-    if (user) {
-        userId = user.uid;
-        isReady = true;
-        document.getElementById('userIdDisplay').textContent = userId;
-        document.getElementById('userIdDisplay').classList.add('text-green-600');
-        loadHistory();
-    } else {
-        // Sign in anonymously if not authenticated
-        auth.signInAnonymously()
-            .catch(error => {
-                console.error("Anonymous sign-in failed:", error);
-                document.getElementById('userIdDisplay').textContent = "AUTH FAILED";
-                showStatusMessage('Could not log you in. Sync disabled.', 'bg-red-700');
-            });
-    }
-});
-
-
-// --- UI & Logic Functions (Encapsulated in a module for clarity) ---
-
+// App logic object to manage state and functions
 const appLogic = {
+    // STATE
+    userId: null,
+    history: {}, // Stores all date-keyed historical data
+    dailyGoalData: {}, // Stores current day's progress and goals
+    charts: {}, // Stores Chart.js instances
+    activePeriod: 'week',
+
+    // CONSTANTS
+    TRACKER_AREAS: ['academic', 'physical', 'character', 'mindset'],
+    DEFAULT_GOALS: {
+        academic: { progress: 0, goal: 2, unit: 'Hrs' },
+        physical: { progress: 0, goal: 30, unit: 'Min' },
+        character: { progress: 0, goal: 10, unit: 'Pages', socialCheck: false },
+        mindset: { status: 'Untoggled', is100: false, unit: 'Affirmed' },
+    },
     
-    renderUI() {
-        if (!isReady) return;
-        const data = currentHistory[TODAY_DATE];
+    // --- UTILITIES & UI HELPERS ---
+    showStatusMessage(message, color) {
+        const statusMessage = document.getElementById('statusMessage');
+        statusMessage.textContent = message;
+        statusMessage.className = `fixed top-4 left-1/2 transform -translate-x-1/2 p-3 ${color} text-white rounded-lg shadow-xl z-50 text-sm opacity-100 transition-opacity duration-300`;
+        statusMessage.classList.remove('hidden');
+
+        setTimeout(() => {
+            statusMessage.classList.remove('opacity-100');
+            statusMessage.classList.add('opacity-0');
+            setTimeout(() => statusMessage.classList.add('hidden'), 300);
+        }, 2000);
+    },
+
+    setLoading(isLoading) {
+        document.getElementById('loadingIndicator').classList.toggle('hidden', !isLoading);
+    },
+
+    getTodayDateKey() {
+        return moment().format('YYYY-MM-DD');
+    },
+
+    // --- AUTHENTICATION HANDLERS ---
+    showAuthForm(formType) {
+        document.getElementById('loginForm').classList.add('hidden');
+        document.getElementById('signupForm').classList.add('hidden');
+        document.getElementById('loginTab').classList.remove('auth-tab-active');
+        document.getElementById('signupTab').classList.remove('auth-tab-active');
         
-        document.getElementById('todayDateDisplay').textContent = moment().format('dddd, MMMM D, YYYY');
+        document.getElementById('loginError').classList.add('hidden');
+        document.getElementById('signupError').classList.add('hidden');
 
-        // 1. Render Goals
-        document.getElementById('academicGoal').value = data.academic.goal;
-        document.getElementById('physicalGoal').value = data.physical.goal;
-        document.getElementById('characterGoal').value = data.character.goal;
 
-        // 2. Render Progress Bars and Text
-        ['academic', 'physical', 'character'].forEach(area => {
-            const progress = data[area].progress || 0;
-            const goal = data[area].goal || 1;
+        if (formType === 'login') {
+            document.getElementById('loginForm').classList.remove('hidden');
+            document.getElementById('loginTab').classList.add('auth-tab-active');
+        } else {
+            document.getElementById('signupForm').classList.remove('hidden');
+            document.getElementById('signupTab').classList.add('auth-tab-active');
+        }
+    },
+
+    async handleSignUp() {
+        const email = document.getElementById('signupEmail').value;
+        const password = document.getElementById('signupPassword').value;
+        const errorElement = document.getElementById('signupError');
+        errorElement.classList.add('hidden');
+        appLogic.setLoading(true);
+
+        try {
+            await auth.createUserWithEmailAndPassword(email, password);
+            // onAuthStateChanged handles the rest
+        } catch (error) {
+            errorElement.textContent = error.message;
+            errorElement.classList.remove('hidden');
+            appLogic.showStatusMessage(`Sign Up Failed: ${error.message}`, 'bg-red-500');
+        } finally {
+            appLogic.setLoading(false);
+        }
+    },
+
+    async handleLogin() {
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
+        const errorElement = document.getElementById('loginError');
+        errorElement.classList.add('hidden');
+        appLogic.setLoading(true);
+
+        try {
+            await auth.signInWithEmailAndPassword(email, password);
+            // onAuthStateChanged handles the rest
+        } catch (error) {
+            errorElement.textContent = error.message;
+            errorElement.classList.remove('hidden');
+            appLogic.showStatusMessage(`Login Failed: ${error.message}`, 'bg-red-500');
+        } finally {
+            appLogic.setLoading(false);
+        }
+    },
+
+    handleLogout() {
+        auth.signOut();
+        appLogic.showStatusMessage('Successfully logged out.', 'bg-gray-500');
+    },
+    
+    // Function used by onAuthStateChanged to set the user context
+    setUserId: (uid) => {
+        appLogic.userId = uid;
+        document.getElementById('userIdDisplay').textContent = uid ? uid : 'No User';
+        // If we have a user, start the snapshot listener to load all data
+        if (uid) {
+            appLogic.setupDataListener();
+        }
+    },
+
+    // --- FIREBASE DATA SYNC ---
+    async setupDataListener() {
+        if (!appLogic.userId) return;
+
+        // The doc reference is based on the authenticated user ID (uid)
+        const docRef = db.collection('userGrowthHistory').doc(appLogic.userId);
+        appLogic.setLoading(true);
+
+        try {
+            // Set up real-time listener for the user's data
+            docRef.onSnapshot(doc => {
+                const data = doc.data() || {};
+                
+                // Load historical data
+                appLogic.history = data.history || {};
+                
+                // Load today's data (or initialize if first time)
+                const todayKey = appLogic.getTodayDateKey();
+                
+                // Use existing data for today, or initialize with defaults
+                let dailyData = appLogic.history[todayKey] || {};
+
+                // Merge today's progress with any changes to goals/structure 
+                // (e.g., ensuring new default goals are present if history is old)
+                appLogic.dailyGoalData = Object.assign({}, appLogic.DEFAULT_GOALS, dailyData);
+                appLogic.dailyGoalData.date = todayKey; // Ensure date key is present
+
+                appLogic.renderUI();
+                appLogic.setLoading(false);
+            }, error => {
+                appLogic.showStatusMessage(`Database Error: ${error.message}`, 'bg-red-500');
+                appLogic.setLoading(false);
+            });
+        } catch (e) {
+            appLogic.showStatusMessage('Failed to set up data listener.', 'bg-red-500');
+            appLogic.setLoading(false);
+        }
+    },
+
+    async saveHistory() {
+        if (!appLogic.userId) {
+            appLogic.showStatusMessage('Authentication required to save progress.', 'bg-red-500');
+            return;
+        }
+
+        const todayKey = appLogic.getTodayDateKey();
+        
+        // Update history with today's state
+        appLogic.history[todayKey] = {
+            ...appLogic.dailyGoalData,
+            date: todayKey
+        };
+
+        const docRef = db.collection('userGrowthHistory').doc(appLogic.userId);
+
+        try {
+            // Use .set() to save the entire history object under the user's document
+            await docRef.set({ history: appLogic.history });
+            // Status message is handled by onSnapshot listener upon success
+        } catch (e) {
+            appLogic.showStatusMessage(`Save failed: ${e.message}`, 'bg-red-500');
+        }
+    },
+
+    // --- TRACKER LOGIC ---
+    updateGoal(area, inputId) {
+        const input = document.getElementById(inputId);
+        let goal = parseFloat(input.value);
+
+        if (isNaN(goal) || goal <= 0) {
+            goal = appLogic.DEFAULT_GOALS[area].goal; // Reset to default if invalid
+            input.value = goal;
+        }
+
+        appLogic.dailyGoalData[area].goal = goal;
+        appLogic.saveHistory();
+        appLogic.showStatusMessage(`Goal for ${area} updated to ${goal} ${appLogic.DEFAULT_GOALS[area].unit}.`, 'bg-blue-500');
+    },
+
+    updateTracker(area, inputId) {
+        const input = document.getElementById(inputId);
+        const value = parseFloat(input.value);
+
+        if (isNaN(value) || value <= 0) {
+            appLogic.showStatusMessage('Please enter a valid positive number.', 'bg-red-500');
+            return;
+        }
+
+        appLogic.dailyGoalData[area].progress += value;
+        input.value = ''; // Clear input field
+
+        appLogic.saveHistory();
+        appLogic.showStatusMessage(`Logged ${value} ${appLogic.DEFAULT_GOALS[area].unit} for ${area}!`, 'bg-green-500');
+    },
+
+    toggleMindsetStatus() {
+        const area = 'mindset';
+        appLogic.dailyGoalData[area].is100 = !appLogic.dailyGoalData[area].is100;
+        
+        appLogic.saveHistory();
+
+        if (appLogic.dailyGoalData[area].is100) {
+            appLogic.showStatusMessage('Mindset: BELIEVE 100% affirmed!', 'bg-yellow-400');
+        } else {
+            appLogic.showStatusMessage('Mindset status reset.', 'bg-gray-500');
+        }
+    },
+
+    toggleSocialCheck() {
+         const area = 'character';
+         appLogic.dailyGoalData[area].socialCheck = !appLogic.dailyGoalData[area].socialCheck;
+         
+         appLogic.saveHistory();
+
+         if (appLogic.dailyGoalData[area].socialCheck) {
+             appLogic.showStatusMessage('Social goal accomplished! Made someone smile!', 'bg-purple-400');
+         } else {
+             appLogic.showStatusMessage('Social goal unchecked.', 'bg-gray-500');
+         }
+    },
+
+    resetDailyProgress() {
+        const todayKey = appLogic.getTodayDateKey();
+        const currentGoals = appLogic.dailyGoalData;
+
+        // Reset progress, but keep the goals
+        const newDailyData = {
+            academic: { progress: 0, goal: currentGoals.academic.goal },
+            physical: { progress: 0, goal: currentGoals.physical.goal },
+            character: { progress: 0, goal: currentGoals.character.goal, socialCheck: false },
+            mindset: { status: 'Untoggled', is100: false },
+            date: todayKey
+        };
+        
+        // This is primarily for the *next* day. We just ensure the history is saved before resetting the current view.
+        // For the *current* day, this effectively resets all progress to zero.
+        appLogic.dailyGoalData = newDailyData; 
+        appLogic.saveHistory();
+        appLogic.showStatusMessage('Daily progress reset! New day, new opportunities!', 'bg-blue-600');
+    },
+    
+    // --- UI RENDERING ---
+    renderUI() {
+        const todayKey = appLogic.getTodayDateKey();
+        document.getElementById('todayDateDisplay').textContent = moment().format('ddd, MMM D, YYYY');
+        
+        // 1. Render Progress Cards
+        appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
+            const data = appLogic.dailyGoalData[area];
+            
+            // Ensure data integrity: Use default goals if the retrieved data is somehow missing a goal
+            const goal = data.goal || appLogic.DEFAULT_GOALS[area].goal;
+            const progress = data.progress || 0;
+
+            document.getElementById(`${area}Goal`).value = goal;
+
             const progressPercent = Math.min(100, (progress / goal) * 100);
             const progressBar = document.getElementById(`${area}ProgressBar`);
             const progressText = document.getElementById(`${area}ProgressText`);
+            const card = document.getElementById(`${area}Card`);
 
             progressBar.style.width = `${progressPercent}%`;
             progressText.textContent = `${progress} / ${goal} (${Math.round(progressPercent)}%)`;
 
-            const card = document.getElementById(`${area}Card`);
-            card.classList.remove('ring-2', 'ring-offset-2', 'ring-green-400', 'ring-blue-400', 'ring-purple-400');
+            // Visual completion cues
+            card.classList.remove('ring-2', 'ring-offset-2', 'ring-green-400', 'ring-offset-white');
             progressBar.classList.remove('!bg-green-600');
 
             if (progressPercent >= 100) {
-                let ringColor = '';
-                if (area === 'academic') ringColor = 'ring-green-400';
-                if (area === 'physical') ringColor = 'ring-blue-400';
-                if (area === 'character') ringColor = 'ring-purple-400';
-
-                card.classList.add('ring-2', 'ring-offset-2', ringColor);
+                card.classList.add('ring-2', 'ring-offset-2', 'ring-green-400', 'ring-offset-white');
                 progressBar.classList.add('!bg-green-600');
+            }
+            
+            // Render Social Check
+            if (area === 'character') {
+                 const socialCheck = document.getElementById('socialCheck');
+                 if (data.socialCheck) {
+                     socialCheck.textContent = '✓ Done!';
+                     socialCheck.classList.add('text-green-600');
+                     socialCheck.classList.remove('text-blue-600');
+                 } else {
+                     socialCheck.textContent = '✓';
+                     socialCheck.classList.add('text-blue-600');
+                     socialCheck.classList.remove('text-green-600');
+                 }
             }
         });
 
-        // 3. Render Mindset Status
+        // 2. Render Mindset Card
         const mindsetBtn = document.getElementById('mindsetStatusBtn');
         const mindsetFeedback = document.getElementById('mindsetFeedback');
+        const mindsetData = appLogic.dailyGoalData['mindset'];
+        const is100 = mindsetData ? mindsetData.is100 : false;
 
-        if (data.mindset.is100) {
-            mindsetBtn.textContent = 'Believe 100% Active';
+
+        if (is100) {
+            mindsetBtn.textContent = 'BELIEVE 100% Locked';
             mindsetBtn.classList.remove('bg-yellow-400', 'hover:bg-yellow-500');
             mindsetBtn.classList.add('bg-green-500', 'hover:bg-green-600');
             mindsetFeedback.innerHTML = '<span class="status-badge bg-green-100 text-green-700">Mindset is Locked In!</span>';
@@ -178,387 +323,264 @@ const appLogic = {
             mindsetFeedback.innerHTML = '<span class="status-badge bg-yellow-100 text-yellow-700">Awaiting Affirmation</span>';
         }
 
-        // 4. Render Social Check
-        const socialCheck = document.getElementById('socialCheck');
-        const isSocialChecked = data.character.socialCheck || false;
-        if (isSocialChecked) {
-            socialCheck.textContent = '✓ Done!';
-            socialCheck.classList.add('text-green-600');
-            socialCheck.classList.remove('text-blue-600');
-        } else {
-            socialCheck.textContent = '✓';
-            socialCheck.classList.add('text-blue-600');
-            socialCheck.classList.remove('text-green-600');
-        }
-        
-        // 5. Render Analysis
-        appLogic.renderAnalysis();
+        // 3. Render Analysis (Charts and Comparison)
+        appLogic.setAnalysisPeriod(appLogic.activePeriod);
     },
 
-    // --- Analysis Functions (Updated to be methods of appLogic) ---
-    
-    /** Gets daily performance over a range (Logic remains the same as previous files) */
-    getDailyPerformance(days, endDate) {
-        const history = currentHistory;
-        const periodData = [];
-        const isAllTime = days > 36500; 
-
-        let startDate;
-        if (isAllTime) {
-            const historyDates = Object.keys(history);
-            if (historyDates.length === 0) return [];
-
-            const earliestDate = historyDates.reduce((minDate, date) => {
-                return moment(date).isBefore(minDate) ? moment(date) : minDate;
-            }, moment()); 
-            
-            startDate = earliestDate.clone().subtract(1, 'day').startOf('day');
-        } else {
-            startDate = moment(endDate).subtract(days, 'days').startOf('day');
-        }
-
-        let currentDate = moment(startDate).add(1, 'day'); 
-
-        while (currentDate.isBefore(endDate) && !currentDate.isAfter(moment())) {
-            const dateString = currentDate.format('YYYY-MM-DD');
-            const dayData = history[dateString];
-
-            let academic = 0, physical = 0, character = 0;
-            let loggedDay = false;
-
-            if (dayData) {
-                loggedDay = true;
-                const calc = (progress, goal) => (goal > 0 ? Math.min(100, (progress / goal) * 100) : 0);
-                
-                academic = calc(dayData.academic.progress, dayData.academic.goal);
-                physical = calc(dayData.physical.progress, dayData.physical.goal);
-                character = calc(dayData.character.progress, dayData.character.goal);
-            } else if (currentDate.isBefore(moment())) {
-                loggedDay = true; 
-            }
-
-            if (loggedDay || !currentDate.isAfter(moment())) {
-                 periodData.push({
-                     date: currentDate.format('YYYY-MM-DD'),
-                     label: currentDate.format('MMM D'), 
-                     academic: academic,
-                     physical: physical,
-                     character: character,
-                     loggedDay: loggedDay
-                 });
-            }
-            
-            currentDate.add(1, 'day');
-        }
-        return periodData;
-    },
-
-    calculateAverageScore(performanceData) {
-        let totalScore = 0;
-        let loggedDayCount = 0; 
-        
-        performanceData.forEach(day => {
-            if (day.loggedDay) {
-                const dailyAverage = (day.academic + day.physical + day.character) / 3;
-                totalScore += dailyAverage;
-                loggedDayCount++;
-            }
-        });
-
-        return loggedDayCount > 0 ? Math.round(totalScore / loggedDayCount) : 0;
-    },
-
+    // --- ANALYSIS & CHARTING ---
     setAnalysisPeriod(period) {
-        activePeriod = period;
+        appLogic.activePeriod = period;
         
         document.querySelectorAll('.period-btn').forEach(btn => btn.classList.remove('period-active'));
-        document.getElementById(`${period}Btn`).classList.add('period-active');
-        
+        document.getElementById(period === 'all' ? 'allBtn' : `${period}Btn`).classList.add('period-active');
+
         appLogic.renderAnalysis();
+    },
+
+    getAnalysisDuration() {
+        const today = moment().startOf('day');
+        let duration;
+        let previousDuration;
+        
+        switch (appLogic.activePeriod) {
+            case 'week':
+                duration = 7;
+                previousDuration = 7;
+                break;
+            case 'month':
+                duration = 30; // Using 30 days for simplicity
+                previousDuration = 30;
+                break;
+            case 'year':
+                duration = 365;
+                previousDuration = 365;
+                break;
+            case 'all':
+                // Find the date of the first logged entry
+                const historyDates = Object.keys(appLogic.history).sort();
+                if (historyDates.length === 0) {
+                    duration = 1;
+                    previousDuration = 0;
+                    break;
+                }
+                const firstDay = moment(historyDates[0], 'YYYY-MM-DD');
+                const totalDays = today.diff(firstDay, 'days') + 1;
+
+                // Split total history into two halves
+                duration = Math.ceil(totalDays / 2); // Current Half
+                previousDuration = Math.floor(totalDays / 2); // Previous Half
+                break;
+            default:
+                duration = 7;
+                previousDuration = 7;
+        }
+        return { duration, previousDuration };
+    },
+
+    getDailyPerformance(duration, endDate, startDate) {
+        const dailyData = {};
+        const areaKeys = appLogic.TRACKER_AREAS;
+        
+        // Use a provided startDate and duration, or calculate from endDate
+        const end = endDate || moment().startOf('day');
+        const start = startDate || moment(end).subtract(duration - 1, 'days').startOf('day');
+        
+        for (let i = 0; i < duration; i++) {
+            const date = moment(start).add(i, 'days');
+            const dateKey = date.format('YYYY-MM-DD');
+            const data = appLogic.history[dateKey];
+            const result = {};
+
+            areaKeys.forEach(area => {
+                const isMindset = area === 'mindset';
+                const areaData = data ? data[area] : appLogic.DEFAULT_GOALS[area];
+                
+                let completion;
+                if (isMindset) {
+                    // Mindset is binary (0% or 100%)
+                    completion = areaData.is100 ? 100 : 0;
+                } else {
+                    const progress = areaData.progress || 0;
+                    const goal = areaData.goal || appLogic.DEFAULT_GOALS[area].goal;
+                    completion = Math.min(100, (progress / goal) * 100);
+                }
+                result[area] = completion;
+            });
+            dailyData[dateKey] = result;
+        }
+        return dailyData;
+    },
+
+    calculateAverages(periodData) {
+        const total = { academic: 0, physical: 0, character: 0 };
+        const days = Object.keys(periodData).length;
+
+        Object.values(periodData).forEach(day => {
+            appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
+                 total[area] += day[area] || 0;
+            });
+        });
+        
+        const avg = {};
+        appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
+            avg[area] = days > 0 ? (total[area] / days) : 0;
+        });
+
+        const overallAvg = days > 0 ? 
+            (Object.values(avg).reduce((sum, val) => sum + val, 0) / 3) : 0;
+            
+        return { avg: avg, overallAvg: overallAvg, days: days };
     },
 
     renderAnalysis() {
-        let days, periodLabel, previousLabel;
+        const { duration, previousDuration } = appLogic.getAnalysisDuration();
+        const today = moment().startOf('day');
         
-        if (activePeriod === 'week') {
-            days = 7;
-            periodLabel = 'This Week';
-            previousLabel = 'Last Week';
-        } else if (activePeriod === 'month') {
-            days = 30;
-            periodLabel = 'This Month';
-            previousLabel = 'Last Month';
-        } else if (activePeriod === 'year') {
-            days = 365;
-            periodLabel = 'This Year';
-            previousLabel = 'Last Year';
-        } else if (activePeriod === 'all') {
-            days = 40000; 
-        }
-
-        const endDate = moment().startOf('day').add(1, 'second'); 
+        let currentPeriodEnd = today;
+        let currentPeriodStart = moment(today).subtract(duration - 1, 'days');
         
-        let currentPeriodData, previousPeriodData, historyDurationDays;
+        let previousPeriodEnd = moment(currentPeriodStart).subtract(1, 'second');
+        let previousPeriodStart = moment(previousPeriodEnd).subtract(previousDuration - 1, 'days');
         
-        if (activePeriod === 'all') {
-            const historyDates = Object.keys(currentHistory);
-            
-            if (historyDates.length === 0 || historyDates.length === 1 && historyDates[0] === TODAY_DATE) {
-                 currentPeriodData = appLogic.getDailyPerformance(1, endDate);
-                 previousPeriodData = []; 
-            } else {
-                 const minDate = historyDates.reduce((min, date) => moment(date).isBefore(min) ? moment(date) : min, moment());
-                 historyDurationDays = endDate.diff(minDate, 'days');
-                 
-                 const halfDuration = Math.max(1, Math.floor(historyDurationDays / 2));
-                 
-                 currentPeriodData = appLogic.getDailyPerformance(halfDuration, endDate);
-                 
-                 const previousEnd = moment(endDate).subtract(halfDuration, 'days');
-                 previousPeriodData = appLogic.getDailyPerformance(halfDuration, previousEnd);
-            }
+        // 1. Get Performance Data
+        const currentDataRaw = appLogic.getDailyPerformance(duration, currentPeriodEnd, currentPeriodStart);
+        const previousDataRaw = appLogic.getDailyPerformance(previousDuration, previousPeriodEnd, previousPeriodStart);
 
-            periodLabel = `Second Half (${currentPeriodData.length} Days)`;
-            previousLabel = `First Half (${previousPeriodData.length} Days)`;
+        const currentAverages = appLogic.calculateAverages(currentDataRaw);
+        const previousAverages = appLogic.calculateAverages(previousDataRaw);
 
-        } else {
-            currentPeriodData = appLogic.getDailyPerformance(days, endDate);
-            const previousEndDate = moment(endDate).subtract(days, 'days');
-            previousPeriodData = appLogic.getDailyPerformance(days, previousEndDate);
-        }
-
-        const currentAverage = appLogic.calculateAverageScore(currentPeriodData);
-        const previousAverage = appLogic.calculateAverageScore(previousPeriodData);
-
-        // --- Update Comparison Card ---
-        const scoreDiff = currentAverage - previousAverage;
-        const diffText = scoreDiff >= 0 ? `+${scoreDiff}%` : `${scoreDiff}%`;
-        const diffColor = scoreDiff >= 0 ? 'text-green-600' : 'text-red-500';
-        const diffIcon = scoreDiff >= 0 ? 
-            `<svg class="w-5 h-5 inline-block -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>` :
-            `<svg class="w-5 h-5 inline-block -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>`;
-
-        document.getElementById('currentPeriodLabel').textContent = periodLabel;
-        document.getElementById('previousPeriodLabel').textContent = previousLabel;
-        document.getElementById('currentAvgScore').textContent = `${currentAverage}%`;
-        document.getElementById('previousAvgScore').textContent = `${previousAverage}%`;
-        document.getElementById('scoreDifference').innerHTML = `${diffIcon} <span class="${diffColor} font-bold">${diffText}</span>`;
-
-        // --- Update Charts ---
+        // 2. Render Comparison Card
+        const currentAvgScore = Math.round(currentAverages.overallAvg);
+        const previousAvgScore = Math.round(previousAverages.overallAvg);
         
-        const dataPointsForChart = currentPeriodData.slice(0, currentPeriodData.length);
-        // Map the previous trend data to align with the length of the current period
-        const previousTrendData = previousPeriodData.slice(-dataPointsForChart.length);
+        const diff = currentAvgScore - previousAvgScore;
 
-        let chartLabels = dataPointsForChart.map((_, index) => `Day ${index + 1}`); 
+        document.getElementById('currentPeriodLabel').textContent = `${appLogic.activePeriod === 'all' ? 'Second Half' : 'Current Period'} (${currentAverages.days} Days)`;
+        document.getElementById('previousPeriodLabel').textContent = `${appLogic.activePeriod === 'all' ? 'First Half' : 'Previous Period'} (${previousAverages.days} Days)`;
+        document.getElementById('currentAvgScore').textContent = `${currentAvgScore}%`;
+        document.getElementById('previousAvgScore').textContent = `${previousAvgScore}%`;
+        
+        const diffElement = document.getElementById('scoreDifference');
+        diffElement.innerHTML = `
+            ${diff > 0 ? '↑' : diff < 0 ? '↓' : '→'} ${Math.abs(diff)}%
+        `;
+        diffElement.classList.toggle('text-green-600', diff >= 0);
+        diffElement.classList.toggle('text-red-600', diff < 0);
 
-        let tickCallback = null;
-        if (activePeriod === 'year' || activePeriod === 'all') {
-            chartLabels = dataPointsForChart.map(d => moment(d.date).format('MMM D'));
-            tickCallback = function(value, index, values) {
-                const dataPoint = dataPointsForChart[index];
-                if (!dataPoint) return null;
-                const date = moment(dataPoint.date);
-                const totalPoints = dataPointsForChart.length;
-                const interval = activePeriod === 'year' ? 30 : Math.max(1, Math.floor(totalPoints / 10));
 
-                if (date.date() === 1 || (index % interval === 0)) {
-                     return date.format('MMM YYYY');
-                }
-                return null;
-            };
-        }
-
-        const areaConfigs = [
-            { id: 'academicChart', area: 'academic', label: 'Academic Knowledge', color: 'rgb(52, 211, 153)' },
-            { id: 'physicalChart', area: 'physical', label: 'Daily Workout', color: 'rgb(96, 165, 250)' },
-            { id: 'characterChart', area: 'character', label: 'Personality & Social', color: 'rgb(167, 139, 250)' },
-        ];
-
-        areaConfigs.forEach(config => {
-            const ctx = document.getElementById(config.id) ? document.getElementById(config.id).getContext('2d') : null;
+        // 3. Render Charts
+        const labels = Array.from({ length: currentAverages.days }, (_, i) => moment(currentPeriodStart).add(i, 'days').format('MM/DD'));
+        
+        appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
+            const currentTrend = labels.map(label => currentDataRaw[moment(label, 'MM/DD').format('YYYY-MM-DD')] ? currentDataRaw[moment(label, 'MM/DD').format('YYYY-MM-DD')][area] : NaN);
             
-            if (!ctx) return;
-            
-            if (charts[config.id]) {
-                charts[config.id].destroy(); 
-            }
-            
-            const getCurrentPeriodChartData = (area) => dataPointsForChart.map(d => d[area]);
-            const getPreviousPeriodChartData = (area) => previousTrendData.map(d => d[area]);
-
-            charts[config.id] = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: chartLabels,
-                    datasets: [
-                        {
-                            label: periodLabel, 
-                            data: getCurrentPeriodChartData(config.area),
-                            borderColor: config.color,
-                            backgroundColor: config.color.replace(')', ', 0.1)'),
-                            borderWidth: 2,
-                            fill: false,
-                            tension: 0.4,
-                            pointRadius: 4,
-                        },
-                        {
-                            label: previousLabel, 
-                            data: getPreviousPeriodChartData(config.area),
-                            borderColor: 'rgb(203, 213, 225)', 
-                            backgroundColor: 'rgb(203, 213, 225)',
-                            borderWidth: 2,
-                            borderDash: [5, 5], 
-                            fill: false,
-                            tension: 0.4,
-                            pointRadius: 2,
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: true, 
-                            position: 'top',
-                        },
-                        title: {
-                            display: true,
-                            text: config.label,
-                            font: { size: 16, weight: 'bold' },
-                            color: '#374151'
-                        }
-                    },
-                    scales: {
-                        x: {
-                            title: { display: false },
-                            grid: { display: false },
-                            ticks: {
-                                callback: tickCallback,
-                                autoSkip: tickCallback === null, 
-                                maxTicksLimit: tickCallback === null ? 10 : undefined
-                            }
-                        },
-                        y: {
-                            min: 0,
-                            max: 100,
-                            title: {
-                                display: true,
-                                text: 'Completion (%)'
-                            },
-                            ticks: {
-                                stepSize: 25
-                            }
-                        }
-                    }
-                }
+            // Map previous period data to align with the current period's length (duration)
+            const previousTrend = Array.from({ length: currentAverages.days }, (_, i) => {
+                const prevDate = moment(previousPeriodStart).add(i, 'days').format('YYYY-MM-DD');
+                return previousDataRaw[prevDate] ? previousDataRaw[prevDate][area] : NaN;
             });
+            
+            appLogic.drawChart(area, labels, currentTrend, previousTrend);
         });
     },
 
-    updateGoal(area, inputId) {
-        if (!isReady) return showStatusMessage('Please wait for sync to complete.', 'bg-gray-500');
-        const input = document.getElementById(inputId);
-        let goal = parseFloat(input.value);
-
-        if (isNaN(goal) || goal <= 0) {
-            goal = 1;
-            input.value = goal;
+    drawChart(area, labels, currentTrend, previousTrend) {
+        if (appLogic.charts[area]) {
+            appLogic.charts[area].destroy();
         }
 
-        currentHistory[TODAY_DATE][area].goal = goal;
-        saveHistory();
-        appLogic.renderUI();
-        showStatusMessage(`Goal for ${area} updated to ${goal}.`, 'bg-blue-500');
-    },
-
-    updateTracker(area, inputId) {
-        if (!isReady) return showStatusMessage('Please wait for sync to complete.', 'bg-gray-500');
-        const input = document.getElementById(inputId);
-        const value = parseFloat(input.value);
-
-        if (isNaN(value) || value <= 0) {
-            showStatusMessage('Please enter a valid positive number.', 'bg-red-500');
-            return;
+        const ctx = document.getElementById(`${area}Chart`).getContext('2d');
+        let color, label;
+        switch (area) {
+            case 'academic': color = 'rgba(52, 211, 153, 1)'; label = 'Academic Progress'; break;
+            case 'physical': color = 'rgba(96, 165, 250, 1)'; label = 'Physical Progress'; break;
+            case 'character': color = 'rgba(167, 139, 250, 1)'; label = 'Personality Progress'; break;
         }
 
-        if (!currentHistory[TODAY_DATE][area].progress) {
-             currentHistory[TODAY_DATE][area].progress = 0;
-        }
-
-        const currentProgress = currentHistory[TODAY_DATE][area].progress;
-        currentHistory[TODAY_DATE][area].progress = currentProgress + value;
-        
-        saveHistory();
-        appLogic.renderUI();
-        input.value = '';
-        showStatusMessage(`Logged ${value} for ${area}! Keep it up!`, 'bg-green-500');
-    },
-
-    toggleMindsetStatus() {
-        if (!isReady) return showStatusMessage('Please wait for sync to complete.', 'bg-gray-500');
-        const newStatus = !currentHistory[TODAY_DATE].mindset.is100;
-        currentHistory[TODAY_DATE].mindset.is100 = newStatus;
-        saveHistory();
-        appLogic.renderUI();
-
-        if (newStatus) {
-            showStatusMessage('Mindset: BELIEVE 100% affirmed for today!', 'bg-yellow-400');
-        } else {
-            showStatusMessage('Mindset status reset.', 'bg-gray-500');
-        }
-    },
-
-    toggleSocialCheck() {
-        if (!isReady) return showStatusMessage('Please wait for sync to complete.', 'bg-gray-500');
-         const newStatus = !currentHistory[TODAY_DATE].character.socialCheck;
-         currentHistory[TODAY_DATE].character.socialCheck = newStatus;
-         saveHistory();
-         appLogic.renderUI();
-
-         if (newStatus) {
-             showStatusMessage('Social goal accomplished! Made someone smile!', 'bg-purple-400');
-         } else {
-             showStatusMessage('Social goal unchecked.', 'bg-gray-500');
-         }
-    },
-
-    resetDailyProgress() {
-        if (!isReady) return showStatusMessage('Please wait for sync to complete.', 'bg-gray-500');
-        
-        const currentGoals = {
-            academic: currentHistory[TODAY_DATE].academic.goal,
-            physical: currentHistory[TODAY_DATE].physical.goal,
-            character: currentHistory[TODAY_DATE].character.goal
-        };
-
-        const resetData = {
-            academic: { progress: 0, goal: currentGoals.academic },
-            physical: { progress: 0, goal: currentGoals.physical },
-            character: { progress: 0, goal: currentGoals.character, socialCheck: false },
-            mindset: { is100: false },
-        };
-        
-        currentHistory[TODAY_DATE] = resetData;
-        
-        saveHistory();
-        appLogic.renderUI();
-        showStatusMessage('Daily progress reset! New day, new opportunities!', 'bg-blue-600');
+        appLogic.charts[area] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Current Period',
+                        data: currentTrend,
+                        borderColor: color,
+                        backgroundColor: color.replace('1)', '0.1)'),
+                        fill: true,
+                        tension: 0.2,
+                        pointRadius: 3,
+                        borderWidth: 3,
+                    },
+                    {
+                        label: 'Previous Period',
+                        data: previousTrend,
+                        borderColor: color.replace('1)', '0.5)'),
+                        backgroundColor: 'transparent',
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.2,
+                        pointRadius: 0,
+                        borderWidth: 2,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    title: {
+                        display: true,
+                        text: label,
+                        color: '#4B5563', // gray-600
+                        padding: { top: 10, bottom: 5 }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { autoSkip: true, maxRotation: 0, minRotation: 0 }
+                    },
+                    y: {
+                        min: 0,
+                        max: 100,
+                        title: { display: true, text: 'Completion (%)' }
+                    }
+                }
+            }
+        });
     }
 };
 
-// Expose public methods
-window.appLogic = appLogic;
 
-// Set initial active period on load
-window.addEventListener('load', () => {
-    // Only set active period if the authentication process has begun
-    if (typeof firebase !== 'undefined' && firebase.auth().currentUser !== null) {
-        appLogic.setAnalysisPeriod('week');
+// --- INITIALIZATION ---
+window.onload = function() {
+    // Check if Firebase is available (should be from index.html)
+    if (typeof firebase === 'undefined') {
+        appLogic.showStatusMessage('FATAL ERROR: Firebase SDK not loaded.', 'bg-red-900');
+        return;
     }
-});
 
-// Expose renderUI globally for authentication callback
-window.renderUI = appLogic.renderUI;
+    // Set global variables from index.html scope
+    app = firebase.app();
+    auth = app.auth();
+    db = app.firestore();
 
+    // Check auth status on load: This listener runs whenever the user logs in, logs out, or their session is verified.
+    auth.onAuthStateChanged(async (user) => {
+        if (user) {
+            // Logged In: Set user ID, show dashboard, start data sync.
+            appLogic.setUserId(user.uid);
+            document.getElementById('authContainer').classList.add('hidden');
+            document.getElementById('trackerAppContainer').classList.remove('hidden');
+            appLogic.showStatusMessage('Signed in successfully!', 'bg-indigo-600');
+        } else {
+            // Logged Out: Show login screen, hide dashboard.
+            document.getElementById('authContainer').classList.remove('hidden');
+            document.getElementById('trackerAppContainer').classList.add('hidden');
+            appLogic.setUserId(null); // Clear data context
+            appLogic.showAuthForm('login'); // Default to login view
+        }
+    });
+};
