@@ -1,0 +1,21 @@
+{
+  "name": "Self-Growth Tracker",
+  "short_name": "Growth Hub",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "description": "Track your Academic, Physical, and Personality growth goals.",
+  "icons": [
+    {
+      "src": "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEg-UEXBXjBr4mwMQ7_Kg7FxBqmXqySa9ZIL313e0nELBXPvYxRn0H0qI0FMeayrYnWzqfn-fNXJpf_AwtHeF7_lbAAlNsL2Jmuvh_01quTopId3ysTZT__Z0eKtTZ-ijImoj56cfdzEFfK6l5yunKo7Qs4lBj8tBzGxrILUL7bvO3NYv0fQWkJGIF30Xq8/s1024/1000134902.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEg-UEXBXjBr4mwMQ7_Kg7FxBqmXqySa9ZIL313e0nELBXPvYxRn0H0qI0FMeayrYnWzqfn-fNXJpf_AwtHeF7_lbAAlNsL2Jmuvh_01quTopId3ysTZT__Z0eKtTZ-ijImoj56cfdzEFfK6l5yunKo7Qs4lBj8tBzGxrILUL7bvO3NYv0fQWkJGIF30Xq8/s1024/1000134902.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ]
+}
