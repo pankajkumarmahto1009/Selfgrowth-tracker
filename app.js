@@ -2,38 +2,47 @@
 let auth = null; 
 let db = null;   
 
-// --- CONFIGURATION (Adapted for Canvas environment) ---
-// Fallback configuration if globals are not available (e.g., running locally)
-const userFirebaseConfig = {
-    apiKey: "AIzaSyBm04Z-D_62R6gVFPVpzXbeiYm8n--1m_0",
-    authDomain: "selfgrowth-tracker.firebaseapp.com",
-    projectId: "selfgrowth-tracker",
-    storageBucket: "selfgrowth-tracker.firebasestorage.app",
-    messagingSenderId: "358018453335",
-    appId: "1:358018453335:web:e0760db9051da0b79ab812",
-    measurementId: "G-4ZV014Q4BC"
-};
-
+// --- CONFIGURATION ---
+// Mandatory: Use environment variables for config and auth
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
     ? JSON.parse(__firebase_config) 
-    : userFirebaseConfig;
+    : { apiKey: "MOCK_API_KEY", authDomain: "mock.firebaseapp.com", projectId: "mock-project" };
+    
+const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' 
-    ? __initial_auth_token 
-    : null;
+// Use the functions imported in index.html for the new SDK syntax
+const { 
+    firebase: firebase,
+    initializeApp: initializeApp,
+    getAuth: getAuth,
+    signInWithCustomToken: signInWithCustomToken,
+    signInAnonymously: signInAnonymously,
+    onAuthStateChanged: onAuthStateChanged,
+    GoogleAuthProvider: GoogleAuthProvider,
+    signInWithPopup: signInWithPopup,
+    signOut: signOut,
+    getFirestore: getFirestore,
+    doc: doc,
+    setDoc: setDoc,
+    onSnapshot: onSnapshot
+} = window;
+
 
 // --- INITIALIZATION FUNCTION ---
 function initFirebase() {
-    if (typeof firebase === 'undefined') {
-        return { auth: null, db: null };
-    }
     try {
-        // Set log level to Debug for better visibility into Firestore/Auth operations
-        firebase.firestore.setLogLevel('debug');
-        const app = firebase.initializeApp(firebaseConfig);
+        // Check if firebase is already initialized to prevent errors
+        if (firebase.apps.length === 0) {
+            const app = initializeApp(firebaseConfig);
+            return {
+                auth: getAuth(app),
+                db: getFirestore(app)
+            };
+        }
         return {
-            auth: app.auth(),
-            db: app.firestore()
+             auth: getAuth(),
+             db: getFirestore()
         };
     } catch (e) {
         console.error("Firebase Initialization Error:", e);
@@ -76,19 +85,15 @@ const appLogic = {
     },
 
     setLoading(isLoading) {
-        // Only toggle the visual indicator, the logic is controlled by onAuthStateChanged
         document.getElementById('loadingIndicator').classList.toggle('hidden', !isLoading);
-        const signInBtn = document.getElementById('googleSignInBtn');
-        if(signInBtn) {
-            signInBtn.disabled = isLoading;
-        }
+        document.getElementById('googleSignInBtn').disabled = isLoading;
     },
 
     getTodayDateKey() {
         return moment().format('YYYY-MM-DD');
     },
 
-    // --- AUTHENTICATION HANDLERS (SWITCHED TO POPUP) ---
+    // --- AUTHENTICATION HANDLERS (Now uses Pop-up) ---
     async handleGoogleLogin() {
         if (!auth) {
              appLogic.showStatusMessage('Initialization Failed. Please try refreshing.', 'bg-red-500');
@@ -97,37 +102,34 @@ const appLogic = {
 
         appLogic.setLoading(true);
 
-        const provider = new firebase.auth.GoogleAuthProvider();
+        const provider = new GoogleAuthProvider();
         
         provider.setCustomParameters({
             prompt: 'select_account' 
         });
 
-        // --- Core Fix: Switched from signInWithRedirect to signInWithPopup ---
         try {
-            // Note: Pop-up is much more stable than redirect, resolving loop issues.
-            const result = await auth.signInWithPopup(provider);
-            // On success, onAuthStateChanged listener will handle UI update
-            appLogic.showStatusMessage(`Successfully signed in as ${result.user.displayName || 'User'}!`, 'bg-indigo-600');
+            // Use signInWithPopup to avoid redirect timing issues and race conditions
+            await signInWithPopup(auth, provider);
+            // The onAuthStateChanged listener will handle UI update
         } catch (error) {
-            // Handle pop-up closed or authentication failure
-            if (error.code !== 'auth/popup-closed-by-user') {
-                appLogic.showStatusMessage(`Sign In Failed: ${error.message}`, 'bg-red-500');
-                console.error("Sign In Popup Error:", error);
+            if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
+                appLogic.showStatusMessage('Pop-up blocked or cancelled. Check your browser settings.', 'bg-yellow-600');
             } else {
-                 appLogic.showStatusMessage('Sign in window closed.', 'bg-gray-500');
+                 appLogic.showStatusMessage(`Sign In Failed: ${error.message}`, 'bg-red-500');
             }
             appLogic.setLoading(false);
         }
     },
 
     handleLogout() {
-        auth.signOut();
+        signOut(auth);
         appLogic.showStatusMessage('Successfully logged out.', 'bg-gray-500');
     },
     
     setUserId: (uid) => {
         appLogic.userId = uid;
+        // Ensure the ID display is correct after login
         document.getElementById('userIdDisplay').textContent = uid ? uid : 'No User';
         if (uid) {
             appLogic.setupDataListener();
@@ -138,15 +140,15 @@ const appLogic = {
     async setupDataListener() {
         if (!appLogic.userId) return;
 
-        // Use the user's private collection path
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const docRef = db.collection('artifacts').doc(appId).collection('users').doc(appLogic.userId).collection('growthData').doc('history');
+        // CRITICAL FIX: Construct the full, secure, user-specific path using the mandatory global variable
+        const docRef = doc(db, 'artifacts', appId, 'users', appLogic.userId, 'growthData', 'history');
 
         appLogic.setLoading(true);
 
         try {
-            docRef.onSnapshot(doc => {
-                const data = doc.data() || {};
+            // Use onSnapshot to listen for real-time updates
+            onSnapshot(docRef, docSnapshot => {
+                const data = docSnapshot.data() || {};
                 
                 appLogic.history = data.history || {};
                 
@@ -159,12 +161,11 @@ const appLogic = {
                 appLogic.renderUI();
                 appLogic.setLoading(false);
             }, error => {
-                console.error("Database Snapshot Error:", error);
+                // This will catch the 'Missing or insufficient permissions' error
                 appLogic.showStatusMessage(`Database Error: ${error.message}`, 'bg-red-500');
                 appLogic.setLoading(false);
             });
         } catch (e) {
-            console.error("Setup Listener Error:", e);
             appLogic.showStatusMessage('Failed to set up data listener.', 'bg-red-500');
             appLogic.setLoading(false);
         }
@@ -175,8 +176,7 @@ const appLogic = {
             appLogic.showStatusMessage('Authentication required to save progress.', 'bg-red-500');
             return;
         }
-        
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
         const todayKey = appLogic.getTodayDateKey();
         
         appLogic.history[todayKey] = {
@@ -184,18 +184,19 @@ const appLogic = {
             date: todayKey
         };
 
-        // Use the user's private collection path
-        const docRef = db.collection('artifacts').doc(appId).collection('users').doc(appLogic.userId).collection('growthData').doc('history');
+        // CRITICAL FIX: Construct the full, secure, user-specific path using the mandatory global variable
+        const docRef = doc(db, 'artifacts', appId, 'users', appLogic.userId, 'growthData', 'history');
 
         try {
-            await docRef.set({ history: appLogic.history }, { merge: true }); 
+            // Use setDoc with merge: true to save the updated history map
+            await setDoc(docRef, { history: appLogic.history }, { merge: true });
+            appLogic.showStatusMessage('Progress saved successfully!', 'bg-indigo-600');
         } catch (e) {
-            console.error("Save History Error:", e);
             appLogic.showStatusMessage(`Save failed: ${e.message}`, 'bg-red-500');
         }
     },
 
-    // --- TRACKER LOGIC (Omitting detailed implementation for brevity, logic remains the same) ---
+    // --- TRACKER LOGIC (Simplified/Existing) ---
     updateGoal(area, inputId) { 
         const input = document.getElementById(inputId);
         let goal = parseFloat(input.value);
@@ -216,7 +217,6 @@ const appLogic = {
             appLogic.showStatusMessage('Please enter a valid positive number.', 'bg-red-500');
             return;
         }
-
         appLogic.dailyGoalData[area].progress += value;
         input.value = ''; 
         appLogic.saveHistory();
@@ -227,77 +227,70 @@ const appLogic = {
         const area = 'mindset';
         appLogic.dailyGoalData[area].is100 = !appLogic.dailyGoalData[area].is100;
         appLogic.saveHistory();
-        appLogic.showStatusMessage(appLogic.dailyGoalData[area].is100 ? 'Mindset: BELIEVE 100% affirmed!' : 'Mindset status reset.', 'bg-yellow-400');
+        if (appLogic.dailyGoalData[area].is100) {
+            appLogic.showStatusMessage('Mindset: BELIEVE 100% affirmed!', 'bg-yellow-400');
+        } else {
+            appLogic.showStatusMessage('Mindset status reset.', 'bg-gray-500');
+        }
     },
 
     toggleSocialCheck() { 
          const area = 'character';
          appLogic.dailyGoalData[area].socialCheck = !appLogic.dailyGoalData[area].socialCheck;
          appLogic.saveHistory();
-         appLogic.showStatusMessage(appLogic.dailyGoalData[area].socialCheck ? 'Social goal accomplished! Made someone smile!' : 'Social goal unchecked.', 'bg-purple-400');
+         if (appLogic.dailyGoalData[area].socialCheck) {
+             appLogic.showStatusMessage('Social goal accomplished! Made someone smile!', 'bg-purple-400');
+         } else {
+             appLogic.showStatusMessage('Social goal unchecked.', 'bg-gray-500');
+         }
     },
 
     resetDailyProgress() { 
         const todayKey = appLogic.getTodayDateKey();
         const currentGoals = appLogic.dailyGoalData;
-        
-        appLogic.dailyGoalData = {
+        const newDailyData = {
             academic: { progress: 0, goal: currentGoals.academic.goal },
             physical: { progress: 0, goal: currentGoals.physical.goal },
             character: { progress: 0, goal: currentGoals.character.goal, socialCheck: false },
             mindset: { status: 'Untoggled', is100: false },
             date: todayKey
         };
+        appLogic.dailyGoalData = newDailyData; 
         appLogic.saveHistory();
         appLogic.showStatusMessage('Daily progress reset! New day, new opportunities!', 'bg-blue-600');
     },
-    
-    // --- UI RENDERING (Uses null checks to avoid runtime errors on missing elements) ---
+
     renderUI() { 
-        const todayKey = appLogic.getTodayDateKey();
-        const dateDisplay = document.getElementById('todayDateDisplay');
-        if (dateDisplay) dateDisplay.textContent = moment().format('ddd, MMM D, YYYY');
+        document.getElementById('todayDateDisplay').textContent = moment().format('ddd, MMM D, YYYY');
         
         appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
             const data = appLogic.dailyGoalData[area];
-            
             const goal = data.goal || appLogic.DEFAULT_GOALS[area].goal;
             const progress = data.progress || 0;
-
-            const goalInput = document.getElementById(`${area}Goal`);
-            if (goalInput) goalInput.value = goal;
-
+            document.getElementById(`${area}Goal`).value = goal;
             const progressPercent = Math.min(100, (progress / goal) * 100);
             const progressBar = document.getElementById(`${area}ProgressBar`);
             const progressText = document.getElementById(`${area}ProgressText`);
             const card = document.getElementById(`${area}Card`);
 
-            if (progressBar) progressBar.style.width = `${progressPercent}%`;
-            if (progressText) progressText.textContent = `${progress} / ${goal} (${Math.round(progressPercent)}%)`;
+            progressBar.style.width = `${progressPercent}%`;
+            progressText.textContent = `${progress} / ${goal} (${Math.round(progressPercent)}%)`;
 
-            if (card) {
-                card.classList.remove('ring-2', 'ring-offset-2', 'ring-green-400', 'ring-offset-white');
-            }
-            if (progressBar) progressBar.classList.remove('!bg-green-600');
+            // Reset classes
+            card.classList.remove('ring-2', 'ring-offset-2', 'ring-green-400', 'ring-offset-white');
+            progressBar.classList.remove('!bg-green-600');
 
             if (progressPercent >= 100) {
-                if (card) card.classList.add('ring-2', 'ring-offset-2', 'ring-green-400', 'ring-offset-white');
-                if (progressBar) progressBar.classList.add('!bg-green-600');
+                card.classList.add('ring-2', 'ring-offset-2', 'ring-green-400', 'ring-offset-white');
+                progressBar.classList.add('!bg-green-600');
             }
             
             if (area === 'character') {
                  const socialCheck = document.getElementById('socialCheck');
-                 if (socialCheck) {
-                     if (data.socialCheck) {
-                         socialCheck.textContent = '✓ Done!';
-                         socialCheck.classList.add('text-green-600');
-                         socialCheck.classList.remove('text-blue-600');
-                     } else {
-                         socialCheck.textContent = '✓';
-                         socialCheck.classList.add('text-blue-600');
-                         socialCheck.classList.remove('text-green-600');
-                     }
-                 }
+                 const isChecked = data.socialCheck;
+                 socialCheck.textContent = isChecked ? '✓ Done!' : '✓';
+                 socialCheck.classList.toggle('text-green-600', isChecked);
+                 socialCheck.classList.toggle('text-blue-600', !isChecked);
             }
         });
 
@@ -306,49 +299,39 @@ const appLogic = {
         const mindsetData = appLogic.dailyGoalData['mindset'];
         const is100 = mindsetData ? mindsetData.is100 : false;
 
-        if (mindsetBtn && mindsetFeedback) {
-             if (is100) {
-                 mindsetBtn.textContent = 'BELIEVE 100% Locked';
-                 mindsetBtn.classList.remove('bg-yellow-400', 'hover:bg-yellow-500');
-                 mindsetBtn.classList.add('bg-green-500', 'hover:bg-green-600');
-                 mindsetFeedback.innerHTML = '<span class="status-badge bg-green-100 text-green-700">Mindset is Locked In!</span>';
-             } else {
-                 mindsetBtn.textContent = 'Affirm Belief';
-                 mindsetBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
-                 mindsetBtn.classList.add('bg-yellow-400', 'hover:bg-yellow-500');
-                 mindsetFeedback.innerHTML = '<span class="status-badge bg-yellow-100 text-yellow-700">Awaiting Affirmation</span>';
-             }
+        if (is100) {
+            mindsetBtn.textContent = 'BELIEVE 100% Locked';
+            mindsetBtn.classList.remove('bg-yellow-400', 'hover:bg-yellow-500');
+            mindsetBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+            mindsetFeedback.innerHTML = '<span class="status-badge bg-green-100 text-green-700">Mindset is Locked In!</span>';
+        } else {
+            mindsetBtn.textContent = 'Affirm Belief';
+            mindsetBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+            mindsetBtn.classList.add('bg-yellow-400', 'hover:bg-yellow-500');
+            mindsetFeedback.innerHTML = '<span class="status-badge bg-yellow-100 text-yellow-700">Awaiting Affirmation</span>';
         }
-
 
         appLogic.setAnalysisPeriod(appLogic.activePeriod);
     },
     
-    // --- ANALYSIS LOGIC (Omitting detailed implementation for brevity, logic remains the same) ---
     getAnalysisDuration() { 
         const today = moment().startOf('day');
-        let duration;
-        let previousDuration;
-        
+        let duration, previousDuration;
         switch (appLogic.activePeriod) {
             case 'week': duration = 7; previousDuration = 7; break;
             case 'month': duration = 30; previousDuration = 30; break;
             case 'year': duration = 365; previousDuration = 365; break;
             case 'all':
                 const historyDates = Object.keys(appLogic.history).sort();
-                if (historyDates.length === 0) {
-                    duration = 1; previousDuration = 0; break;
-                }
+                if (historyDates.length === 0) { duration = 1; previousDuration = 0; break; }
                 const firstDay = moment(historyDates[0], 'YYYY-MM-DD');
                 const totalDays = today.diff(firstDay, 'days') + 1;
-                duration = Math.ceil(totalDays / 2); 
-                previousDuration = Math.floor(totalDays / 2); 
+                duration = Math.ceil(totalDays / 2); previousDuration = Math.floor(totalDays / 2); 
                 break;
             default: duration = 7; previousDuration = 7;
         }
         return { duration, previousDuration };
     },
-
     getDailyPerformance(duration, endDate, startDate) { 
         const dailyData = {};
         const areaKeys = appLogic.TRACKER_AREAS;
@@ -356,9 +339,12 @@ const appLogic = {
         const end = endDate || moment().startOf('day');
         const start = startDate || moment(end).subtract(duration - 1, 'days').startOf('day');
         
-        for (let i = 0; i < duration; i++) {
-            const date = moment(start).add(i, 'days');
-            const dateKey = date.format('YYYY-MM-DD');
+        const datesInPeriod = [];
+        for (let date = moment(start); date.isSameOrBefore(end); date.add(1, 'days')) {
+            datesInPeriod.push(date.format('YYYY-MM-DD'));
+        }
+
+        datesInPeriod.forEach(dateKey => {
             const data = appLogic.history[dateKey];
             const result = {};
 
@@ -377,43 +363,37 @@ const appLogic = {
                 result[area] = completion;
             });
             dailyData[dateKey] = result;
-        }
+        });
+
         return dailyData;
     },
-
     calculateAverages(periodData) { 
         const total = { academic: 0, physical: 0, character: 0 };
-        const areas = appLogic.TRACKER_AREAS.filter(a => a !== 'mindset');
         const days = Object.keys(periodData).length;
 
         Object.values(periodData).forEach(day => {
-            areas.forEach(area => {
+            appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
                  total[area] += day[area] || 0;
             });
         });
         
         const avg = {};
-        areas.forEach(area => {
+        appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
             avg[area] = days > 0 ? (total[area] / days) : 0;
         });
 
         const overallAvg = days > 0 ? 
-            (Object.values(avg).reduce((sum, val) => sum + val, 0) / areas.length) : 0;
+            (Object.values(avg).reduce((sum, val) => sum + val, 0) / 3) : 0;
             
         return { avg: avg, overallAvg: overallAvg, days: days };
     },
-
     setAnalysisPeriod(period) {
-        appLogic.activePeriod = period;
-        // Update button styles
-        document.querySelectorAll('.period-btn').forEach(btn => {
-            btn.classList.remove('period-active');
-        });
+        document.querySelectorAll('.period-btn').forEach(btn => btn.classList.remove('period-active'));
         const activeBtn = document.getElementById(`${period}Btn`);
-        if (activeBtn) activeBtn.classList.add('period-active');
+        if (activeBtn) { activeBtn.classList.add('period-active'); }
+        appLogic.activePeriod = period;
         appLogic.renderAnalysis();
     },
-
     renderAnalysis() { 
         const { duration, previousDuration } = appLogic.getAnalysisDuration();
         const today = moment().startOf('day');
@@ -435,47 +415,39 @@ const appLogic = {
         
         const diff = currentAvgScore - previousAvgScore;
 
-        const currentLabel = document.getElementById('currentPeriodLabel');
-        const previousLabel = document.getElementById('previousPeriodLabel');
-        const currentScore = document.getElementById('currentAvgScore');
-        const previousScore = document.getElementById('previousAvgScore');
-
-        if (currentLabel) currentLabel.textContent = `${appLogic.activePeriod === 'all' ? 'Second Half' : 'Current Period'} (${currentAverages.days} Days)`;
-        if (previousLabel) previousLabel.textContent = `${appLogic.activePeriod === 'all' ? 'First Half' : 'Previous Period'} (${previousAverages.days} Days)`;
-        if (currentScore) currentScore.textContent = `${currentAvgScore}%`;
-        if (previousScore) previousScore.textContent = `${previousAvgScore}%`;
+        document.getElementById('currentPeriodLabel').textContent = `${appLogic.activePeriod === 'all' ? 'Second Half' : 'Current Period'} (${currentAverages.days} Days)`;
+        document.getElementById('previousPeriodLabel').textContent = `${appLogic.activePeriod === 'all' ? 'First Half' : 'Previous Period'} (${previousAverages.days} Days)`;
+        document.getElementById('currentAvgScore').textContent = `${currentAvgScore}%`;
+        document.getElementById('previousAvgScore').textContent = `${previousAvgScore}%`;
         
         const diffElement = document.getElementById('scoreDifference');
-        if (diffElement) {
-            diffElement.innerHTML = `
-                ${diff > 0 ? '↑' : diff < 0 ? '↓' : '→'} ${Math.abs(diff)}%
-            `;
-            diffElement.classList.toggle('text-green-600', diff >= 0);
-            diffElement.classList.toggle('text-red-600', diff < 0);
-        }
+        diffElement.innerHTML = `
+            ${diff > 0 ? '↑' : diff < 0 ? '↓' : '→'} ${Math.abs(diff)}%
+        `;
+        diffElement.classList.toggle('text-green-600', diff >= 0);
+        diffElement.classList.toggle('text-red-600', diff < 0);
 
-        const labels = Array.from({ length: currentAverages.days }, (_, i) => moment(currentPeriodStart).add(i, 'days').format('MM/DD'));
+
+        const currentLabels = Object.keys(currentDataRaw).map(dateKey => moment(dateKey).format('MM/DD'));
         
         appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
-            const currentTrend = labels.map(label => currentDataRaw[moment(label, 'MM/DD').format('YYYY-MM-DD')] ? currentDataRaw[moment(label, 'MM/DD').format('YYYY-MM-DD')][area] : NaN);
+            const currentTrend = currentLabels.map(label => currentDataRaw[moment(label, 'MM/DD').format('YYYY-MM-DD')] ? currentDataRaw[moment(label, 'MM/DD').format('YYYY-MM-DD')][area] : NaN);
             
-            const previousTrend = Array.from({ length: currentAverages.days }, (_, i) => {
-                const prevDate = moment(previousPeriodStart).add(i, 'days').format('YYYY-MM-DD');
-                return previousDataRaw[prevDate] ? previousDataRaw[prevDate][area] : NaN;
+            const previousKeys = Object.keys(previousDataRaw).sort();
+            const previousTrend = Array.from({ length: currentLabels.length }, (_, i) => {
+                const prevDateKey = previousKeys[i];
+                return previousDataRaw[prevDateKey] ? previousDataRaw[prevDateKey][area] : NaN;
             });
             
-            appLogic.drawChart(area, labels, currentTrend, previousTrend);
+            appLogic.drawChart(area, currentLabels, currentTrend, previousTrend);
         });
     },
-
     drawChart(area, labels, currentTrend, previousTrend) { 
         if (appLogic.charts[area]) {
             appLogic.charts[area].destroy();
         }
 
-        const ctx = document.getElementById(`${area}Chart`);
-        if (!ctx) return; // Prevent error if chart canvas is missing
-
+        const ctx = document.getElementById(`${area}Chart`).getContext('2d');
         let color, label;
         switch (area) {
             case 'academic': color = 'rgba(52, 211, 153, 1)'; label = 'Academic Progress'; break;
@@ -483,7 +455,7 @@ const appLogic = {
             case 'character': color = 'rgba(167, 139, 250, 1)'; label = 'Personality Progress'; break;
         }
 
-        appLogic.charts[area] = new Chart(ctx.getContext('2d'), {
+        appLogic.charts[area] = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: labels,
@@ -541,7 +513,8 @@ const appLogic = {
 
 
 // --- INITIALIZATION ---
-window.onload = function() {
+window.onload = async function() {
+    firebase.setLogLevel('debug');
     const firebaseServices = initFirebase();
     auth = firebaseServices.auth;
     db = firebaseServices.db;
@@ -550,49 +523,39 @@ window.onload = function() {
          appLogic.showStatusMessage('Initialization Failed. Please try refreshing.', 'bg-red-900');
          return;
     }
-    
-    // 1. Initial Authentication (Canvas Requirement)
-    // Attempt to sign in with the custom token or anonymously if the token is missing.
-    const initialAuth = async () => {
-        try {
-            if (initialAuthToken) {
-                await auth.signInWithCustomToken(initialAuthToken);
-            } else {
-                // Use anonymous sign-in as a fallback for the initial Canvas session
-                await auth.signInAnonymously();
-            }
-        } catch (error) {
-            console.error("Initial Auth Error:", error);
-            // If initial auth fails, we just wait for the user to click Google sign-in
-        }
-    };
-    
-    // 2. Main Auth Listener: This is the SINGLE source of truth for UI visibility.
-    // It runs after all sign-ins (custom token, anonymous, or Google popup).
-    auth.onAuthStateChanged((user) => {
-        appLogic.setLoading(false); // Hide the loading screen now that state is known
-        document.getElementById('googleSignInBtn').disabled = false; // Enable the button
 
-        const trackerContainer = document.getElementById('trackerAppContainer');
-        const authContainer = document.getElementById('authContainer');
+    appLogic.setLoading(true);
+
+    try {
+        // Use the initial token for immediate environment sign-in
+        if (initialAuthToken) {
+            await signInWithCustomToken(auth, initialAuthToken);
+        } else {
+            // Fallback to anonymous sign-in if token is missing
+            await signInAnonymously(auth);
+        }
+    } catch (e) {
+        console.error("Initial Auth Error:", e);
+        appLogic.showStatusMessage(`Initial Auth Failed: ${e.message}`, 'bg-red-900');
+        appLogic.setLoading(false);
+    }
+    
+    // Main Auth Listener: This is the SINGLE SOURCE OF TRUTH for UI visibility.
+    onAuthStateChanged(auth, (user) => {
+        appLogic.setLoading(false); 
+        document.getElementById('googleSignInBtn').disabled = false; 
 
         if (user) {
             appLogic.setUserId(user.uid);
-            // Show the Tracker page
-            if (authContainer) authContainer.classList.add('hidden');
-            if (trackerContainer) trackerContainer.classList.remove('hidden');
-            // Show a successful message only if it was a fresh login, not just page load
-            if (user.isAnonymous === false) { 
-                appLogic.showStatusMessage(`Welcome back! Your growth dashboard is ready.`, 'bg-green-600');
-            }
+            // Show the Tracker
+            document.getElementById('authContainer').classList.add('hidden');
+            document.getElementById('trackerAppContainer').classList.remove('hidden');
+            appLogic.showStatusMessage('Successfully loaded dashboard.', 'bg-indigo-600');
         } else {
             appLogic.setUserId(null); 
-            // Show the Sign-In screen
-            if (authContainer) authContainer.classList.remove('hidden');
-            if (trackerContainer) trackerContainer.classList.add('hidden');
+            // Show the Sign-In Screen
+            document.getElementById('authContainer').classList.remove('hidden');
+            document.getElementById('trackerAppContainer').classList.add('hidden');
         }
     });
-
-    // Start the initial auth process (which will trigger onAuthStateChanged)
-    initialAuth();
 };
