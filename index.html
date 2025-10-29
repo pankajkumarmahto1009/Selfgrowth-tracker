@@ -270,11 +270,20 @@
         let auth = null; 
         let db = null;   
 
-        // --- CONFIGURATION ---
-        // CRITICAL FIX: Load the config and variables directly from the environment.
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        // --- USER'S HARDCODED CONFIGURATION (CRITICAL FIX) ---
+        // This explicitly uses the keys you provided, overriding any potentially broken environment variable.
+        const hardcodedFirebaseConfig = {
+            apiKey: "AIzaSyBm04Z-D_62R6gVFPVpzXbeiYm8n--1m_0",
+            authDomain: "selfgrowth-tracker.firebaseapp.com",
+            projectId: "selfgrowth-tracker",
+            storageBucket: "selfgrowth-tracker.firebasestorage.app",
+            messagingSenderId: "358018453335",
+            appId: "1:358018453335:web:e0760db9051da0b79ab812"
+        };
+        
+        // Environment variables required for Canvas functionality
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : hardcodedFirebaseConfig.projectId; // Use project ID as fallback for appId
 
         // App logic object to manage state and functions
         const appLogic = {
@@ -681,15 +690,14 @@
         window.onload = async function() {
             firebase.setLogLevel('debug');
             
-            // 1. Initialize Firebase App (CRITICAL FIX: Uses the required config)
-            const firebaseServices = {};
+            // 1. Initialize Firebase App (CRITICAL FIX: Uses the hardcoded config you provided)
             try {
-                // We use the JSON.parse here to retrieve the config object provided by the environment
-                const app = firebase.initializeApp(firebaseConfig);
+                // Initialize using the hardcoded config object
+                const app = firebase.initializeApp(hardcodedFirebaseConfig);
                 auth = app.auth();
                 db = app.firestore();
             } catch (e) {
-                console.error("FATAL: Firebase Initialization Error:", e);
+                console.error("FATAL: Firebase Initialization Error (Using Hardcoded Keys):", e);
                 appLogic.showStatusMessage('FATAL: Initialization failed. (Check console for API key error)', 'bg-red-900');
                 return;
             }
