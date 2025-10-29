@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -76,33 +77,7 @@
 </head>
 <body class="p-4 sm:p-8">
 
-    <!-- Your Firebase configuration goes here -->
-    <script>
-        // *** FINAL, FILLED-IN CONFIGURATION ***
-        const firebaseConfig = {
-            apiKey: "AIzaSyBm04Z-D_62R6gVFPVpzXbeiYm8n--1m_0",
-            authDomain: "selfgrowth-tracker.firebaseapp.com",
-            projectId: "selfgrowth-tracker",
-            storageBucket: "selfgrowth-tracker.firebasestorage.app",
-            messagingSenderId: "358018453335",
-            appId: "1:358018453335:web:e0760db9051da0b79ab812",
-            measurementId: "G-4ZV014Q4BC"
-        };
-        
-        // --- NEW INITIALIZATION STRUCTURE ---
-        // Global variables are now managed by initFirebase() inside app.js
-        function initFirebase() {
-            if (typeof firebase === 'undefined') {
-                console.error('Firebase SDK not loaded.');
-                return { auth: null, db: null };
-            }
-            const app = firebase.initializeApp(firebaseConfig);
-            return {
-                auth: app.auth(),
-                db: app.firestore()
-            };
-        }
-    </script>
+    <!-- Note: Firebase config is now inside app.js for guaranteed order. -->
 
     <!-- Content HTML starts here -->
     <div class="max-w-6xl mx-auto">
@@ -304,7 +279,7 @@
     </div>
 
     <!-- Link to external JS file containing all logic -->
-    <script src="app.js?v=202510300540"></script>
+    <script src="app.js"></script>
 
 </body>
 </html>
