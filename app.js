@@ -61,12 +61,14 @@ const appLogic = {
         if (formType === 'login') {
             document.getElementById('loginForm').classList.remove('hidden');
             document.getElementById('loginTab').classList.add('auth-tab-active');
-            document.getElementById('loginTab').classList.remove('text-gray-500'); // Ensure color is indigo/blue
+            // Ensure color handling for non-active tab
+            document.getElementById('loginTab').classList.remove('text-gray-500'); 
             document.getElementById('signupTab').classList.add('text-gray-500');
         } else {
             document.getElementById('signupForm').classList.remove('hidden');
             document.getElementById('signupTab').classList.add('auth-tab-active');
-            document.getElementById('signupTab').classList.remove('text-gray-500'); // Ensure color is indigo/blue
+            // Ensure color handling for non-active tab
+            document.getElementById('signupTab').classList.remove('text-gray-500'); 
             document.getElementById('loginTab').classList.add('text-gray-500');
         }
     },
