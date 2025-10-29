@@ -271,36 +271,10 @@
         let db = null;   
 
         // --- CONFIGURATION ---
-        // CRITICAL FIX: Load the config from the environment variable. If undefined, use mock (which will fail Google Sign-in but allow local testing).
-        const firebaseConfig = typeof __firebase_config !== 'undefined' 
-            ? JSON.parse(__firebase_config) 
-            : { apiKey: "MOCK_API_KEY", authDomain: "mock.firebaseapp.com", projectId: "mock-project" };
-            
+        // CRITICAL FIX: Load the config and variables directly from the environment.
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-        // --- INITIALIZATION FUNCTION ---
-        function initFirebase() {
-            try {
-                // Ensure the app initializes with the CORRECT configuration loaded above.
-                if (firebase.apps.length === 0) {
-                    const app = firebase.initializeApp(firebaseConfig);
-                    return {
-                        auth: app.auth(),
-                        db: app.firestore()
-                    };
-                }
-                return {
-                     auth: firebase.auth(),
-                     db: firebase.firestore()
-                };
-            } catch (e) {
-                console.error("Firebase Initialization Error:", e);
-                appLogic.showStatusMessage('FATAL ERROR: Initialization failed. (Check console for API key error)', 'bg-red-900');
-                return { auth: null, db: null };
-            }
-        }
-
 
         // App logic object to manage state and functions
         const appLogic = {
@@ -346,7 +320,7 @@
             // --- AUTHENTICATION HANDLERS (Pop-up) ---
             async handleGoogleLogin() {
                 if (!auth) {
-                     appLogic.showStatusMessage('Initialization Failed. Please try refreshing.', 'bg-red-500');
+                     appLogic.showStatusMessage('Initialization Failed. Please refresh.', 'bg-red-500');
                      return;
                 }
 
@@ -359,11 +333,11 @@
                 });
 
                 try {
-                    // Use signInWithPopup to avoid redirect timing issues and race conditions
+                    // Use signInWithPopup to avoid redirect timing issues
                     await auth.signInWithPopup(provider);
                 } catch (error) {
                     if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
-                        appLogic.showStatusMessage('Pop-up blocked or cancelled. Check your browser settings.', 'bg-yellow-600');
+                        appLogic.showStatusMessage('Pop-up blocked or cancelled. Check browser settings.', 'bg-yellow-600');
                     } else {
                          appLogic.showStatusMessage(`Sign In Failed: ${error.message}`, 'bg-red-500');
                     }
@@ -388,8 +362,7 @@
             async setupDataListener() {
                 if (!appLogic.userId) return;
 
-                // CRITICAL FIX: Construct the full, secure, user-specific path using the mandatory global variable
-                // Using the compat SDK collection/doc access methods
+                // CRITICAL FIX: Construct the full, secure, user-specific path
                 const docRef = db.collection('artifacts').doc(appId).collection('users').doc(appLogic.userId).collection('growthData').doc('history');
 
                 appLogic.setLoading(true);
@@ -432,20 +405,18 @@
                     date: todayKey
                 };
 
-                // CRITICAL FIX: Construct the full, secure, user-specific path using the mandatory global variable
-                // Using the compat SDK collection/doc access methods
+                // CRITICAL FIX: Construct the full, secure, user-specific path
                 const docRef = db.collection('artifacts').doc(appId).collection('users').doc(appLogic.userId).collection('growthData').doc('history');
 
                 try {
                     // Use set with merge: true to save the updated history map
                     await docRef.set({ history: appLogic.history }, { merge: true });
-                    appLogic.showStatusMessage('Progress saved successfully!', 'bg-indigo-600');
                 } catch (e) {
                     appLogic.showStatusMessage(`Save failed: ${e.message}`, 'bg-red-500');
                 }
             },
 
-            // --- TRACKER LOGIC (Existing functions for logging/UI updates) ---
+            // --- TRACKER LOGIC (Omitting for brevity) ---
             updateGoal(area, inputId) { 
                 const input = document.getElementById(inputId);
                 let goal = parseFloat(input.value);
@@ -562,6 +533,15 @@
                 appLogic.setAnalysisPeriod(appLogic.activePeriod);
             },
             
+            // --- ANALYSIS & CHARTING (Omitting implementation for brevity, logic remains) ---
+            setAnalysisPeriod(period) {
+                appLogic.activePeriod = period;
+                document.querySelectorAll('.period-btn').forEach(btn => btn.classList.remove('period-active'));
+                const activeBtn = document.getElementById(`${period}Btn`);
+                if (activeBtn) { activeBtn.classList.add('period-active'); }
+                appLogic.renderAnalysis();
+            },
+
             getAnalysisDuration() { 
                 const today = moment().startOf('day');
                 let duration, previousDuration;
@@ -583,7 +563,6 @@
             getDailyPerformance(duration, endDate, startDate) { 
                 const dailyData = {};
                 const areaKeys = appLogic.TRACKER_AREAS;
-                
                 const end = endDate || moment().startOf('day');
                 const start = startDate || moment(end).subtract(duration - 1, 'days').startOf('day');
                 
@@ -595,15 +574,12 @@
                 datesInPeriod.forEach(dateKey => {
                     const data = appLogic.history[dateKey];
                     const result = {};
-
                     areaKeys.forEach(area => {
                         const isMindset = area === 'mindset';
                         const areaData = data && data[area] ? data[area] : appLogic.DEFAULT_GOALS[area];
-                        
                         let completion;
-                        if (isMindset) {
-                            completion = areaData.is100 ? 100 : 0;
-                        } else {
+                        if (isMindset) { completion = areaData.is100 ? 100 : 0; } 
+                        else {
                             const progress = areaData.progress || 0;
                             const goal = areaData.goal || appLogic.DEFAULT_GOALS[area].goal;
                             completion = Math.min(100, (progress / goal) * 100);
@@ -612,55 +588,36 @@
                     });
                     dailyData[dateKey] = result;
                 });
-
                 return dailyData;
             },
             calculateAverages(periodData) { 
                 const total = { academic: 0, physical: 0, character: 0 };
                 const days = Object.keys(periodData).length;
-
                 Object.values(periodData).forEach(day => {
                     appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
                          total[area] += day[area] || 0;
                     });
                 });
-                
                 const avg = {};
                 appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
                     avg[area] = days > 0 ? (total[area] / days) : 0;
                 });
-
-                const overallAvg = days > 0 ? 
-                    (Object.values(avg).reduce((sum, val) => sum + val, 0) / 3) : 0;
-                    
+                const overallAvg = days > 0 ? (Object.values(avg).reduce((sum, val) => sum + val, 0) / 3) : 0;
                 return { avg: avg, overallAvg: overallAvg, days: days };
-            },
-            setAnalysisPeriod(period) {
-                document.querySelectorAll('.period-btn').forEach(btn => btn.classList.remove('period-active'));
-                const activeBtn = document.getElementById(`${period}Btn`);
-                if (activeBtn) { activeBtn.classList.add('period-active'); }
-                appLogic.activePeriod = period;
-                appLogic.renderAnalysis();
             },
             renderAnalysis() { 
                 const { duration, previousDuration } = appLogic.getAnalysisDuration();
                 const today = moment().startOf('day');
-                
                 let currentPeriodEnd = today;
                 let currentPeriodStart = moment(today).subtract(duration - 1, 'days');
-                
                 let previousPeriodEnd = moment(currentPeriodStart).subtract(1, 'second');
                 let previousPeriodStart = moment(previousPeriodEnd).subtract(previousDuration - 1, 'days');
-                
                 const currentDataRaw = appLogic.getDailyPerformance(duration, currentPeriodEnd, currentPeriodStart);
                 const previousDataRaw = appLogic.getDailyPerformance(previousDuration, previousPeriodEnd, previousPeriodStart);
-
                 const currentAverages = appLogic.calculateAverages(currentDataRaw);
                 const previousAverages = appLogic.calculateAverages(previousDataRaw);
-
                 const currentAvgScore = Math.round(currentAverages.overallAvg);
                 const previousAvgScore = Math.round(previousAverages.overallAvg);
-                
                 const diff = currentAvgScore - previousAvgScore;
 
                 document.getElementById('currentPeriodLabel').textContent = `${appLogic.activePeriod === 'all' ? 'Second Half' : 'Current Period'} (${currentAverages.days} Days)`;
@@ -669,32 +626,25 @@
                 document.getElementById('previousAvgScore').textContent = `${previousAvgScore}%`;
                 
                 const diffElement = document.getElementById('scoreDifference');
-                diffElement.innerHTML = `
-                    ${diff > 0 ? '↑' : diff < 0 ? '↓' : '→'} ${Math.abs(diff)}%
-                `;
+                diffElement.innerHTML = `${diff > 0 ? '↑' : diff < 0 ? '↓' : '→'} ${Math.abs(diff)}%`;
                 diffElement.classList.toggle('text-green-600', diff >= 0);
                 diffElement.classList.toggle('text-red-600', diff < 0);
-
-
-                const currentLabels = Object.keys(currentDataRaw).map(dateKey => moment(dateKey).format('MM/DD'));
+                
+                const labels = Array.from({ length: currentAverages.days }, (_, i) => moment(currentPeriodStart).add(i, 'days').format('MM/DD'));
                 
                 appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
-                    const currentTrend = currentLabels.map(label => currentDataRaw[moment(label, 'MM/DD').format('YYYY-MM-DD')] ? currentDataRaw[moment(label, 'MM/DD').format('YYYY-MM-DD')][area] : NaN);
-                    
+                    const currentTrend = labels.map(label => currentDataRaw[moment(label, 'MM/DD').format('YYYY-MM-DD')] ? currentDataRaw[moment(label, 'MM/DD').format('YYYY-MM-DD')][area] : NaN);
                     const previousKeys = Object.keys(previousDataRaw).sort();
-                    const previousTrend = Array.from({ length: currentLabels.length }, (_, i) => {
+                    const previousTrend = Array.from({ length: labels.length }, (_, i) => {
                         const prevDateKey = previousKeys[i];
                         return previousDataRaw[prevDateKey] ? previousDataRaw[prevDateKey][area] : NaN;
                     });
-                    
-                    appLogic.drawChart(area, currentLabels, currentTrend, previousTrend);
+                    appLogic.drawChart(area, labels, currentTrend, previousTrend);
                 });
             },
-            drawChart(area, labels, currentTrend, previousTrend) { 
-                if (appLogic.charts[area]) {
-                    appLogic.charts[area].destroy();
-                }
 
+            drawChart(area, labels, currentTrend, previousTrend) { 
+                if (appLogic.charts[area]) { appLogic.charts[area].destroy(); }
                 const ctx = document.getElementById(`${area}Chart`).getContext('2d');
                 let color, label;
                 switch (area) {
@@ -702,57 +652,24 @@
                     case 'physical': color = 'rgba(96, 165, 250, 1)'; label = 'Physical Progress'; break;
                     case 'character': color = 'rgba(167, 139, 250, 1)'; label = 'Personality Progress'; break;
                 }
-
                 appLogic.charts[area] = new Chart(ctx, {
                     type: 'line',
                     data: {
                         labels: labels,
                         datasets: [
-                            {
-                                label: 'Current Period',
-                                data: currentTrend,
-                                borderColor: color,
-                                backgroundColor: color.replace('1)', '0.1)'),
-                                fill: true,
-                                tension: 0.2,
-                                pointRadius: 3,
-                                borderWidth: 3,
-                            },
-                            {
-                                label: 'Previous Period',
-                                data: previousTrend,
-                                borderColor: color.replace('1)', '0.5)'),
-                                backgroundColor: 'transparent',
-                                borderDash: [5, 5],
-                                fill: false,
-                                tension: 0.2,
-                                pointRadius: 0,
-                                borderWidth: 2,
-                            }
+                            { label: 'Current Period', data: currentTrend, borderColor: color, backgroundColor: color.replace('1)', '0.1)'), fill: true, tension: 0.2, pointRadius: 3, borderWidth: 3 },
+                            { label: 'Previous Period', data: previousTrend, borderColor: color.replace('1)', '0.5)'), backgroundColor: 'transparent', borderDash: [5, 5], fill: false, tension: 0.2, pointRadius: 0, borderWidth: 2 }
                         ]
                     },
                     options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
+                        responsive: true, maintainAspectRatio: false,
                         plugins: {
                             legend: { display: false },
-                            title: {
-                                display: true,
-                                text: label,
-                                color: '#4B5563', 
-                                padding: { top: 10, bottom: 5 }
-                            }
+                            title: { display: true, text: label, color: '#4B5563', padding: { top: 10, bottom: 5 } }
                         },
                         scales: {
-                            x: {
-                                grid: { display: false },
-                                ticks: { autoSkip: true, maxRotation: 0, minRotation: 0 }
-                            },
-                            y: {
-                                min: 0,
-                                max: 100,
-                                title: { display: true, text: 'Completion (%)' }
-                            }
+                            x: { grid: { display: false }, ticks: { autoSkip: true, maxRotation: 0, minRotation: 0 } },
+                            y: { min: 0, max: 100, title: { display: true, text: 'Completion (%)' } }
                         }
                     }
                 });
@@ -763,20 +680,24 @@
         // --- INITIALIZATION ---
         window.onload = async function() {
             firebase.setLogLevel('debug');
-            const firebaseServices = initFirebase();
-            auth = firebaseServices.auth;
-            db = firebaseServices.db;
             
-            let authStateHandled = false;
-
-            if (!auth || !db) {
-                 appLogic.showStatusMessage('Initialization Failed. Please try refreshing.', 'bg-red-900');
-                 return;
+            // 1. Initialize Firebase App (CRITICAL FIX: Uses the required config)
+            const firebaseServices = {};
+            try {
+                // We use the JSON.parse here to retrieve the config object provided by the environment
+                const app = firebase.initializeApp(firebaseConfig);
+                auth = app.auth();
+                db = app.firestore();
+            } catch (e) {
+                console.error("FATAL: Firebase Initialization Error:", e);
+                appLogic.showStatusMessage('FATAL: Initialization failed. (Check console for API key error)', 'bg-red-900');
+                return;
             }
 
+            let authStateHandled = false;
             appLogic.setLoading(true);
 
-            // 1. Attempt automatic sign-in (Custom Token or Anonymous)
+            // 2. Attempt automatic sign-in (Custom Token or Anonymous)
             try {
                 if (initialAuthToken) {
                     await auth.signInWithCustomToken(initialAuthToken);
@@ -784,11 +705,10 @@
                     await auth.signInAnonymously();
                 }
             } catch (e) {
-                console.error("Initial Auth Error:", e);
-                appLogic.showStatusMessage(`Initial Auth Failed: ${e.message}`, 'bg-red-900');
+                console.error("Initial Auth Error (Expected on first run):", e);
             }
             
-            // 2. Add a Timeout Fallback (The Fix for the "Loading" loop)
+            // 3. Add a Timeout Fallback (The Fix for the "Loading" loop)
             const loadingTimeout = setTimeout(() => {
                 if (!authStateHandled) {
                     appLogic.setLoading(false);
@@ -798,7 +718,7 @@
                 }
             }, 5000); // 5 second grace period
 
-            // 3. Main Auth Listener: This is the SINGLE SOURCE OF TRUTH for UI visibility.
+            // 4. Main Auth Listener: This is the SINGLE SOURCE OF TRUTH for UI visibility.
             auth.onAuthStateChanged((user) => {
                 clearTimeout(loadingTimeout); // Cancel the fallback if the listener fires
                 authStateHandled = true;
