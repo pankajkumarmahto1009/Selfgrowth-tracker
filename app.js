@@ -93,7 +93,7 @@ const appLogic = {
         return moment().format('YYYY-MM-DD');
     },
 
-    // --- AUTHENTICATION HANDLERS (Now uses Pop-up) ---
+    // --- AUTHENTICATION HANDLERS (Pop-up) ---
     async handleGoogleLogin() {
         if (!auth) {
              appLogic.showStatusMessage('Initialization Failed. Please try refreshing.', 'bg-red-500');
@@ -111,7 +111,6 @@ const appLogic = {
         try {
             // Use signInWithPopup to avoid redirect timing issues and race conditions
             await signInWithPopup(auth, provider);
-            // The onAuthStateChanged listener will handle UI update
         } catch (error) {
             if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
                 appLogic.showStatusMessage('Pop-up blocked or cancelled. Check your browser settings.', 'bg-yellow-600');
@@ -129,7 +128,6 @@ const appLogic = {
     
     setUserId: (uid) => {
         appLogic.userId = uid;
-        // Ensure the ID display is correct after login
         document.getElementById('userIdDisplay').textContent = uid ? uid : 'No User';
         if (uid) {
             appLogic.setupDataListener();
@@ -140,7 +138,7 @@ const appLogic = {
     async setupDataListener() {
         if (!appLogic.userId) return;
 
-        // CRITICAL FIX: Construct the full, secure, user-specific path using the mandatory global variable
+        // CRITICAL: Construct the full, secure, user-specific path using the mandatory global variable
         const docRef = doc(db, 'artifacts', appId, 'users', appLogic.userId, 'growthData', 'history');
 
         appLogic.setLoading(true);
@@ -161,7 +159,6 @@ const appLogic = {
                 appLogic.renderUI();
                 appLogic.setLoading(false);
             }, error => {
-                // This will catch the 'Missing or insufficient permissions' error
                 appLogic.showStatusMessage(`Database Error: ${error.message}`, 'bg-red-500');
                 appLogic.setLoading(false);
             });
@@ -184,7 +181,7 @@ const appLogic = {
             date: todayKey
         };
 
-        // CRITICAL FIX: Construct the full, secure, user-specific path using the mandatory global variable
+        // CRITICAL: Construct the full, secure, user-specific path using the mandatory global variable
         const docRef = doc(db, 'artifacts', appId, 'users', appLogic.userId, 'growthData', 'history');
 
         try {
@@ -519,6 +516,9 @@ window.onload = async function() {
     auth = firebaseServices.auth;
     db = firebaseServices.db;
     
+    // Flag to ensure we only run the fallback once
+    let authStateHandled = false;
+
     if (!auth || !db) {
          appLogic.showStatusMessage('Initialization Failed. Please try refreshing.', 'bg-red-900');
          return;
@@ -526,8 +526,8 @@ window.onload = async function() {
 
     appLogic.setLoading(true);
 
+    // 1. Attempt automatic sign-in (Custom Token or Anonymous)
     try {
-        // Use the initial token for immediate environment sign-in
         if (initialAuthToken) {
             await signInWithCustomToken(auth, initialAuthToken);
         } else {
@@ -537,11 +537,25 @@ window.onload = async function() {
     } catch (e) {
         console.error("Initial Auth Error:", e);
         appLogic.showStatusMessage(`Initial Auth Failed: ${e.message}`, 'bg-red-900');
-        appLogic.setLoading(false);
     }
     
-    // Main Auth Listener: This is the SINGLE SOURCE OF TRUTH for UI visibility.
+    // 2. Add a Timeout Fallback (The Fix for the "Loading" loop)
+    // If the onAuthStateChanged listener hasn't fired in 5 seconds, force the login screen.
+    const loadingTimeout = setTimeout(() => {
+        if (!authStateHandled) {
+            appLogic.setLoading(false);
+            // Manually show the auth container if the listener never fired
+            document.getElementById('authContainer').classList.remove('hidden');
+            document.getElementById('googleSignInBtn').disabled = false;
+            appLogic.showStatusMessage('Automatic sign-in failed. Please sign in with Google.', 'bg-yellow-600');
+        }
+    }, 5000); // 5 second grace period
+
+    // 3. Main Auth Listener: This is the SINGLE SOURCE OF TRUTH for UI visibility.
     onAuthStateChanged(auth, (user) => {
+        clearTimeout(loadingTimeout); // Cancel the fallback if the listener fires
+        authStateHandled = true;
+
         appLogic.setLoading(false); 
         document.getElementById('googleSignInBtn').disabled = false; 
 
