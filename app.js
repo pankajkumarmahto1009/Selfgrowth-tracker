@@ -1,4 +1,3 @@
-
 // Global instance variables for Firebase services and tracking state
 let app; // Initialized in index.html
 let auth; // Initialized in index.html
@@ -45,7 +44,7 @@ const appLogic = {
     },
 
     // --- AUTHENTICATION HANDLERS ---
-    // Switched to redirect method to fix pop-up issue
+    // Uses Redirect method to fix pop-up issue on mobile devices
     async handleGoogleLogin() {
         appLogic.setLoading(true);
 
@@ -271,11 +270,208 @@ const appLogic = {
     },
     
     // ANALYSIS functions (omitted for brevity)
-    getAnalysisDuration() { /* ... */ },
-    getDailyPerformance(duration, endDate, startDate) { /* ... */ },
-    calculateAverages(periodData) { /* ... */ },
-    renderAnalysis() { /* ... */ },
-    drawChart(area, labels, currentTrend, previousTrend) { /* ... */ },
+    getAnalysisDuration() { 
+        const today = moment().startOf('day');
+        let duration;
+        let previousDuration;
+        
+        switch (appLogic.activePeriod) {
+            case 'week':
+                duration = 7;
+                previousDuration = 7;
+                break;
+            case 'month':
+                duration = 30; // Using 30 days for simplicity
+                previousDuration = 30;
+                break;
+            case 'year':
+                duration = 365;
+                previousDuration = 365;
+                break;
+            case 'all':
+                const historyDates = Object.keys(appLogic.history).sort();
+                if (historyDates.length === 0) {
+                    duration = 1;
+                    previousDuration = 0;
+                    break;
+                }
+                const firstDay = moment(historyDates[0], 'YYYY-MM-DD');
+                const totalDays = today.diff(firstDay, 'days') + 1;
+
+                duration = Math.ceil(totalDays / 2); 
+                previousDuration = Math.floor(totalDays / 2); 
+                break;
+            default:
+                duration = 7;
+                previousDuration = 7;
+        }
+        return { duration, previousDuration };
+    },
+    getDailyPerformance(duration, endDate, startDate) {
+        const dailyData = {};
+        const areaKeys = appLogic.TRACKER_AREAS;
+        
+        const end = endDate || moment().startOf('day');
+        const start = startDate || moment(end).subtract(duration - 1, 'days').startOf('day');
+        
+        for (let i = 0; i < duration; i++) {
+            const date = moment(start).add(i, 'days');
+            const dateKey = date.format('YYYY-MM-DD');
+            const data = appLogic.history[dateKey];
+            const result = {};
+
+            areaKeys.forEach(area => {
+                const isMindset = area === 'mindset';
+                const areaData = data ? data[area] : appLogic.DEFAULT_GOALS[area];
+                
+                let completion;
+                if (isMindset) {
+                    completion = areaData.is100 ? 100 : 0;
+                } else {
+                    const progress = areaData.progress || 0;
+                    const goal = areaData.goal || appLogic.DEFAULT_GOALS[area].goal;
+                    completion = Math.min(100, (progress / goal) * 100);
+                }
+                result[area] = completion;
+            });
+            dailyData[dateKey] = result;
+        }
+        return dailyData;
+    },
+    calculateAverages(periodData) {
+        const total = { academic: 0, physical: 0, character: 0 };
+        const days = Object.keys(periodData).length;
+
+        Object.values(periodData).forEach(day => {
+            appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
+                 total[area] += day[area] || 0;
+            });
+        });
+        
+        const avg = {};
+        appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
+            avg[area] = days > 0 ? (total[area] / days) : 0;
+        });
+
+        const overallAvg = days > 0 ? 
+            (Object.values(avg).reduce((sum, val) => sum + val, 0) / 3) : 0;
+            
+        return { avg: avg, overallAvg: overallAvg, days: days };
+    },
+    renderAnalysis() {
+        const { duration, previousDuration } = appLogic.getAnalysisDuration();
+        const today = moment().startOf('day');
+        
+        let currentPeriodEnd = today;
+        let currentPeriodStart = moment(today).subtract(duration - 1, 'days');
+        
+        let previousPeriodEnd = moment(currentPeriodStart).subtract(1, 'second');
+        let previousPeriodStart = moment(previousPeriodEnd).subtract(previousDuration - 1, 'days');
+        
+        const currentDataRaw = appLogic.getDailyPerformance(duration, currentPeriodEnd, currentPeriodStart);
+        const previousDataRaw = appLogic.getDailyPerformance(previousDuration, previousPeriodEnd, previousPeriodStart);
+
+        const currentAverages = appLogic.calculateAverages(currentDataRaw);
+        const previousAverages = appLogic.calculateAverages(previousDataRaw);
+
+        const currentAvgScore = Math.round(currentAverages.overallAvg);
+        const previousAvgScore = Math.round(previousAverages.overallAvg);
+        
+        const diff = currentAvgScore - previousAvgScore;
+
+        document.getElementById('currentPeriodLabel').textContent = `${appLogic.activePeriod === 'all' ? 'Second Half' : 'Current Period'} (${currentAverages.days} Days)`;
+        document.getElementById('previousPeriodLabel').textContent = `${appLogic.activePeriod === 'all' ? 'First Half' : 'Previous Period'} (${previousAverages.days} Days)`;
+        document.getElementById('currentAvgScore').textContent = `${currentAvgScore}%`;
+        document.getElementById('previousAvgScore').textContent = `${previousAvgScore}%`;
+        
+        const diffElement = document.getElementById('scoreDifference');
+        diffElement.innerHTML = `
+            ${diff > 0 ? '↑' : diff < 0 ? '↓' : '→'} ${Math.abs(diff)}%
+        `;
+        diffElement.classList.toggle('text-green-600', diff >= 0);
+        diffElement.classList.toggle('text-red-600', diff < 0);
+
+
+        const labels = Array.from({ length: currentAverages.days }, (_, i) => moment(currentPeriodStart).add(i, 'days').format('MM/DD'));
+        
+        appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
+            const currentTrend = labels.map(label => currentDataRaw[moment(label, 'MM/DD').format('YYYY-MM-DD')] ? currentDataRaw[moment(label, 'MM/DD').format('YYYY-MM-DD')][area] : NaN);
+            
+            const previousTrend = Array.from({ length: currentAverages.days }, (_, i) => {
+                const prevDate = moment(previousPeriodStart).add(i, 'days').format('YYYY-MM-DD');
+                return previousDataRaw[prevDate] ? previousDataRaw[prevDate][area] : NaN;
+            });
+            
+            appLogic.drawChart(area, labels, currentTrend, previousTrend);
+        });
+    },
+    drawChart(area, labels, currentTrend, previousTrend) {
+        if (appLogic.charts[area]) {
+            appLogic.charts[area].destroy();
+        }
+
+        const ctx = document.getElementById(`${area}Chart`).getContext('2d');
+        let color, label;
+        switch (area) {
+            case 'academic': color = 'rgba(52, 211, 153, 1)'; label = 'Academic Progress'; break;
+            case 'physical': color = 'rgba(96, 165, 250, 1)'; label = 'Physical Progress'; break;
+            case 'character': color = 'rgba(167, 139, 250, 1)'; label = 'Personality Progress'; break;
+        }
+
+        appLogic.charts[area] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Current Period',
+                        data: currentTrend,
+                        borderColor: color,
+                        backgroundColor: color.replace('1)', '0.1)'),
+                        fill: true,
+                        tension: 0.2,
+                        pointRadius: 3,
+                        borderWidth: 3,
+                    },
+                    {
+                        label: 'Previous Period',
+                        data: previousTrend,
+                        borderColor: color.replace('1)', '0.5)'),
+                        backgroundColor: 'transparent',
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.2,
+                        pointRadius: 0,
+                        borderWidth: 2,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    title: {
+                        display: true,
+                        text: label,
+                        color: '#4B5563', 
+                        padding: { top: 10, bottom: 5 }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { autoSkip: true, maxRotation: 0, minRotation: 0 }
+                    },
+                    y: {
+                        min: 0,
+                        max: 100,
+                        title: { display: true, text: 'Completion (%)' }
+                    }
+                }
+            }
+        });
+    }
 
 
 };
@@ -292,29 +488,34 @@ window.onload = function() {
     auth = app.auth();
     db = app.firestore();
     
-    // CRITICAL: Check for a pending redirect result before setting the auth listener
-    // This is how the app logs in after Google redirects back to your GitHub page.
+    // CRITICAL FIX: Check for the redirect result first to prevent race conditions
     auth.getRedirectResult().then((result) => {
         if (result.user) {
              appLogic.setLoading(false);
              appLogic.showStatusMessage('Login successful via Google redirect!', 'bg-indigo-600');
         }
-    }).catch((error) => {
-        // If the redirect failed (e.g., user cancelled login), we just show the error.
-        appLogic.showStatusMessage(`Redirect Login Error: ${error.message}`, 'bg-red-500');
-        appLogic.setLoading(false);
-    });
+        // Then proceed to set the main auth listener
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                appLogic.setUserId(user.uid);
+                document.getElementById('authContainer').classList.add('hidden');
+                document.getElementById('trackerAppContainer').classList.remove('hidden');
+            } else {
+                document.getElementById('authContainer').classList.remove('hidden');
+                document.getElementById('trackerAppContainer').classList.add('hidden');
+                appLogic.setUserId(null); 
+            }
+        });
 
-    // Main Auth Listener: This runs once the page is fully loaded or a session is confirmed.
-    auth.onAuthStateChanged(async (user) => {
-        if (user) {
-            appLogic.setUserId(user.uid);
-            document.getElementById('authContainer').classList.add('hidden');
-            document.getElementById('trackerAppContainer').classList.remove('hidden');
-        } else {
-            document.getElementById('authContainer').classList.remove('hidden');
-            document.getElementById('trackerAppContainer').classList.add('hidden');
-            appLogic.setUserId(null); 
-        }
+    }).catch((error) => {
+        appLogic.showStatusMessage(`Redirect Error: ${error.message}`, 'bg-red-500');
+        appLogic.setLoading(false);
+        // Fall through to the onAuthStateChanged listener to ensure UI shows up
+        auth.onAuthStateChanged(async (user) => {
+            if (!user) {
+                document.getElementById('authContainer').classList.remove('hidden');
+                document.getElementById('trackerAppContainer').classList.add('hidden');
+            }
+        });
     });
 };
