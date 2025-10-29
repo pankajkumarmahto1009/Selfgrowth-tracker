@@ -77,29 +77,33 @@
 <body class="p-4 sm:p-8">
 
     <!-- Your Firebase configuration goes here -->
-    <script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-analytics.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
-
-  // Your web app's Firebase configuration
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-  const firebaseConfig = {
-    apiKey: "AIzaSyBm04Z-D_62R6gVFPVpzXbeiYm8n--1m_0",
-    authDomain: "selfgrowth-tracker.firebaseapp.com",
-    projectId: "selfgrowth-tracker",
-    storageBucket: "selfgrowth-tracker.firebasestorage.app",
-    messagingSenderId: "358018453335",
-    appId: "1:358018453335:web:e0760db9051da0b79ab812",
-    measurementId: "G-4ZV014Q4BC"
-  };
-
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
+    <script>
+        // *** FINAL, FILLED-IN CONFIGURATION ***
+        const firebaseConfig = {
+            apiKey: "AIzaSyBm04Z-D_62R6gVFPVpzXbeiYm8n--1m_0",
+            authDomain: "selfgrowth-tracker.firebaseapp.com",
+            projectId: "selfgrowth-tracker",
+            storageBucket: "selfgrowth-tracker.firebasestorage.app",
+            messagingSenderId: "358018453335",
+            appId: "1:358018453335:web:e0760db9051da0b79ab812",
+            measurementId: "G-4ZV014Q4BC"
+        };
+        
+        // --- NEW INITIALIZATION STRUCTURE ---
+        // Global variables are now managed by initFirebase() inside app.js
+        function initFirebase() {
+            if (typeof firebase === 'undefined') {
+                console.error('Firebase SDK not loaded.');
+                return { auth: null, db: null };
+            }
+            const app = firebase.initializeApp(firebaseConfig);
+            return {
+                auth: app.auth(),
+                db: app.firestore()
+            };
+        }
     </script>
+
     <!-- Content HTML starts here -->
     <div class="max-w-6xl mx-auto">
         <header class="text-center mb-6 pt-4">
@@ -118,7 +122,7 @@
             <h2 class="text-3xl font-bold text-gray-800 mb-6">Welcome!</h2>
             <p class="text-gray-600 mb-6">Sign in to sync your progress across all devices.</p>
             
-            <button onclick="appLogic.handleGoogleLogin()" class="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg transition duration-150 shadow-md flex items-center justify-center space-x-2 transform hover:scale-[1.01]">
+            <button id="googleSignInBtn" onclick="appLogic.handleGoogleLogin()" class="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg transition duration-150 shadow-md flex items-center justify-center space-x-2 transform hover:scale-[1.01]" disabled>
                 <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12c6.63 0 12-5.37 12-12S18.63 0 12 0zm0 3.6c2.4 0 4.4 1.6 5.16 3.84L12 10.8V7.2H6.84A5.55 5.55 0 006.4 12c0 2.97 2.43 5.4 5.4 5.4s5.4-2.43 5.4-5.4h1.8c0 3.96-3.24 7.2-7.2 7.2S4.8 15.96 4.8 12 8.04 4.8 12 4.8z" fill="#fff"/></svg>
                 <span>Sign in with Google</span>
             </button>
@@ -300,7 +304,6 @@
     </div>
 
     <!-- Link to external JS file containing all logic -->
-    <!-- FIX: Added timestamp query to force browser to load new app.js version -->
     <script src="app.js?v=202510300540"></script>
 
 </body>
