@@ -11,10 +11,29 @@
     <!-- Load Moment.js for date calculations -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
 
-    <!-- Firebase SDKs (Using compat versions as per original code) -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <!-- Firebase SDKs (Using compat versions for simplicity in the single script tags) -->
+    <script type="module">
+        // Import all required Firebase functions using standard module import
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js";
+        import firebase from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js";
+        
+        // Exporting imported modules and global variables to the window scope for access in app.js
+        window.firebase = firebase;
+        window.initializeApp = initializeApp;
+        window.getAuth = getAuth;
+        window.signInWithCustomToken = signInWithCustomToken;
+        window.signInAnonymously = signInAnonymously;
+        window.onAuthStateChanged = onAuthStateChanged;
+        window.GoogleAuthProvider = GoogleAuthProvider;
+        window.signInWithPopup = signInWithPopup;
+        window.signOut = signOut;
+        window.getFirestore = getFirestore;
+        window.doc = doc;
+        window.setDoc = setDoc;
+        window.onSnapshot = onSnapshot;
+    </script>
     
     <style>
         /* Custom styles for aesthetic */
@@ -76,22 +95,22 @@
 </head>
 <body class="p-4 sm:p-8">
 
-    <!-- Content HTML starts here -->
     <div class="max-w-6xl mx-auto">
         <header class="text-center mb-6 pt-4">
             <h1 class="text-4xl font-extrabold text-gray-800 tracking-tight">Persistency Doc Tracker</h1>
             <p class="text-lg text-gray-500 mt-1">Your Growth Dashboard (Cloud Synced).</p>
         </header>
 
+        <!-- Status and Loading are now set to be controlled by JS -->
         <div id="statusMessage" class="hidden fixed top-4 left-1/2 transform -translate-x-1/2 p-3 bg-gray-800 text-white rounded-lg shadow-xl z-50 text-sm opacity-0 transition-opacity duration-300"></div>
         
-        <!-- LOADING INDICATOR: Starts visible, hides when auth state is confirmed -->
+        <!-- LOADING INDICATOR (Visible by default until state is determined by JS) -->
         <div id="loadingIndicator" class="fixed inset-0 bg-white/75 flex items-center justify-center z-50">
             <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
             <span class="ml-4 text-indigo-700 font-semibold">Syncing Data...</span>
         </div>
 
-        <!-- AUTHENTICATION CONTAINER (Hidden until auth state determines no user) -->
+        <!-- AUTHENTICATION CONTAINER (Hidden by default) -->
         <div id="authContainer" class="max-w-md mx-auto my-16 p-8 bg-white rounded-xl shadow-2xl border border-gray-100 text-center hidden">
             <h2 class="text-3xl font-bold text-gray-800 mb-6">Welcome!</h2>
             <p class="text-gray-600 mb-6">Sign in to sync your progress across all devices.</p>
@@ -102,7 +121,7 @@
             </button>
         </div>
 
-        <!-- MAIN TRACKER CONTAINER (Hidden until successful login) -->
+        <!-- MAIN TRACKER CONTAINER (Hidden until login) -->
         <div id="trackerAppContainer" class="max-w-6xl mx-auto hidden">
             <!-- Today's Date Display -->
             <div class="text-center mb-8 p-3 bg-indigo-50 border-b border-indigo-200 rounded-lg max-w-lg mx-auto flex justify-between items-center">
