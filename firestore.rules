@@ -3,7 +3,6 @@ service cloud.firestore {
 match /databases/{database}/documents {
 // This rule allows read/write access to ALL documents within a specific user's private path.
 // The path is: /artifacts/{appId}/users/{userId}/{any_subcollection}/{any_document}
-// This ensures no user can access another user's data.
 match /artifacts/{appId}/users/{userId}/{documents=**} {
   // The condition: allow access only if the authenticated user's ID (request.auth.uid) 
   // exactly matches the {userId} captured in the path.
