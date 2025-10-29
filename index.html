@@ -271,7 +271,7 @@
         let db = null;   
 
         // --- CONFIGURATION ---
-        // Mandatory: Use environment variables for config and auth
+        // CRITICAL FIX: Load the config from the environment variable. If undefined, use mock (which will fail Google Sign-in but allow local testing).
         const firebaseConfig = typeof __firebase_config !== 'undefined' 
             ? JSON.parse(__firebase_config) 
             : { apiKey: "MOCK_API_KEY", authDomain: "mock.firebaseapp.com", projectId: "mock-project" };
@@ -279,25 +279,10 @@
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-        // Destructure Firebase compat SDK functions from the global 'firebase' object
-        const { 
-            getAuth: firebaseGetAuth,
-            signInWithCustomToken: firebaseSignInWithCustomToken,
-            signInAnonymously: firebaseSignInAnonymously,
-            onAuthStateChanged: firebaseOnAuthStateChanged,
-            GoogleAuthProvider: FirebaseGoogleAuthProvider,
-            signInWithPopup: firebaseSignInWithPopup,
-            signOut: firebaseSignOut,
-            getFirestore: firebaseGetFirestore,
-            doc: firebaseDoc,
-            setDoc: firebaseSetDoc,
-            onSnapshot: firebaseOnSnapshot
-        } = firebase.auth.Auth.prototype.constructor; // Helper to access compat functions
-
         // --- INITIALIZATION FUNCTION ---
         function initFirebase() {
             try {
-                // Check if firebase is already initialized to prevent errors
+                // Ensure the app initializes with the CORRECT configuration loaded above.
                 if (firebase.apps.length === 0) {
                     const app = firebase.initializeApp(firebaseConfig);
                     return {
@@ -311,7 +296,7 @@
                 };
             } catch (e) {
                 console.error("Firebase Initialization Error:", e);
-                appLogic.showStatusMessage('FATAL ERROR: Initialization failed.', 'bg-red-900');
+                appLogic.showStatusMessage('FATAL ERROR: Initialization failed. (Check console for API key error)', 'bg-red-900');
                 return { auth: null, db: null };
             }
         }
@@ -782,7 +767,6 @@
             auth = firebaseServices.auth;
             db = firebaseServices.db;
             
-            // Flag to ensure we only run the fallback once
             let authStateHandled = false;
 
             if (!auth || !db) {
@@ -797,7 +781,6 @@
                 if (initialAuthToken) {
                     await auth.signInWithCustomToken(initialAuthToken);
                 } else {
-                    // Fallback to anonymous sign-in if token is missing
                     await auth.signInAnonymously();
                 }
             } catch (e) {
@@ -806,11 +789,9 @@
             }
             
             // 2. Add a Timeout Fallback (The Fix for the "Loading" loop)
-            // If the onAuthStateChanged listener hasn't fired in 5 seconds, force the login screen.
             const loadingTimeout = setTimeout(() => {
                 if (!authStateHandled) {
                     appLogic.setLoading(false);
-                    // Manually show the auth container if the listener never fired
                     document.getElementById('authContainer').classList.remove('hidden');
                     document.getElementById('googleSignInBtn').disabled = false;
                     appLogic.showStatusMessage('Automatic sign-in failed. Please sign in with Google.', 'bg-yellow-600');
