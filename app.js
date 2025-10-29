@@ -1,3 +1,4 @@
+
 // Global instance variables for Firebase services and tracking state
 let app; // Initialized in index.html
 let auth; // Initialized in index.html
@@ -44,68 +45,26 @@ const appLogic = {
     },
 
     // --- AUTHENTICATION HANDLERS ---
-    showAuthForm(formType) {
-        // Hide both forms
-        document.getElementById('loginForm').classList.add('hidden');
-        document.getElementById('signupForm').classList.add('hidden');
-        
-        // Remove active class from both tabs
-        document.getElementById('loginTab').classList.remove('auth-tab-active');
-        document.getElementById('signupTab').classList.remove('auth-tab-active');
-        
-        // Hide previous errors
-        document.getElementById('loginError').classList.add('hidden');
-        document.getElementById('signupError').classList.add('hidden');
-
-        // Show the selected form and activate the tab
-        if (formType === 'login') {
-            document.getElementById('loginForm').classList.remove('hidden');
-            document.getElementById('loginTab').classList.add('auth-tab-active');
-            // Ensure color handling for non-active tab
-            document.getElementById('loginTab').classList.remove('text-gray-500'); 
-            document.getElementById('signupTab').classList.add('text-gray-500');
-        } else {
-            document.getElementById('signupForm').classList.remove('hidden');
-            document.getElementById('signupTab').classList.add('auth-tab-active');
-            // Ensure color handling for non-active tab
-            document.getElementById('signupTab').classList.remove('text-gray-500'); 
-            document.getElementById('loginTab').classList.add('text-gray-500');
-        }
-    },
-
-    async handleSignUp() {
-        const email = document.getElementById('signupEmail').value;
-        const password = document.getElementById('signupPassword').value;
-        const errorElement = document.getElementById('signupError');
-        errorElement.classList.add('hidden');
+    async handleGoogleLogin() {
         appLogic.setLoading(true);
 
-        try {
-            await auth.createUserWithEmailAndPassword(email, password);
-            // onAuthStateChanged handles the rest
-        } catch (error) {
-            errorElement.textContent = error.message;
-            errorElement.classList.remove('hidden');
-            appLogic.showStatusMessage(`Sign Up Failed: ${error.message}`, 'bg-red-500');
-        } finally {
-            appLogic.setLoading(false);
-        }
-    },
-
-    async handleLogin() {
-        const email = document.getElementById('loginEmail').value;
-        const password = document.getElementById('loginPassword').value;
-        const errorElement = document.getElementById('loginError');
-        errorElement.classList.add('hidden');
-        appLogic.setLoading(true);
+        // 1. Create a Google Auth Provider instance
+        const provider = new firebase.auth.GoogleAuthProvider();
+        
+        // 2. Add prompt to allow account switching (as requested by user)
+        provider.setCustomParameters({
+            prompt: 'select_account' // Forces the user to select or confirm an account
+        });
 
         try {
-            await auth.signInWithEmailAndPassword(email, password);
-            // onAuthStateChanged handles the rest
+            // 3. Trigger the sign-in pop-up
+            await auth.signInWithPopup(provider);
+            // onAuthStateChanged listener handles success (shows dashboard)
         } catch (error) {
-            errorElement.textContent = error.message;
-            errorElement.classList.remove('hidden');
-            appLogic.showStatusMessage(`Login Failed: ${error.message}`, 'bg-red-500');
+            // Check for pop-up closed error (user cancelled)
+            if (error.code !== 'auth/popup-closed-by-user') {
+                appLogic.showStatusMessage(`Sign In Failed: ${error.message}`, 'bg-red-500');
+            }
         } finally {
             appLogic.setLoading(false);
         }
@@ -590,7 +549,6 @@ window.onload = function() {
             document.getElementById('authContainer').classList.remove('hidden');
             document.getElementById('trackerAppContainer').classList.add('hidden');
             appLogic.setUserId(null); // Clear data context
-            appLogic.showAuthForm('login'); // Default to login view
         }
     });
 };
