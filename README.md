@@ -1,1 +1,1 @@
-# Selfgrowth-tracker
+# selfgrowth-tracker
