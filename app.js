@@ -2,8 +2,9 @@
 let auth = null; 
 let db = null;   
 
-// --- CONFIGURATION (Moved from HTML) ---
-const firebaseConfig = {
+// --- CONFIGURATION (Adapted for Canvas environment) ---
+// Fallback configuration if globals are not available (e.g., running locally)
+const userFirebaseConfig = {
     apiKey: "AIzaSyBm04Z-D_62R6gVFPVpzXbeiYm8n--1m_0",
     authDomain: "selfgrowth-tracker.firebaseapp.com",
     projectId: "selfgrowth-tracker",
@@ -12,6 +13,14 @@ const firebaseConfig = {
     appId: "1:358018453335:web:e0760db9051da0b79ab812",
     measurementId: "G-4ZV014Q4BC"
 };
+
+const firebaseConfig = typeof __firebase_config !== 'undefined' 
+    ? JSON.parse(__firebase_config) 
+    : userFirebaseConfig;
+
+const initialAuthToken = typeof __initial_auth_token !== 'undefined' 
+    ? __initial_auth_token 
+    : null;
 
 // --- INITIALIZATION FUNCTION ---
 function initFirebase() {
@@ -61,10 +70,11 @@ const appLogic = {
             statusMessage.classList.remove('opacity-100');
             statusMessage.classList.add('opacity-0');
             setTimeout(() => statusMessage.classList.add('hidden'), 300);
-        }, 2000);
+        }, 3000);
     },
 
     setLoading(isLoading) {
+        // Only toggle the visual indicator, the logic is controlled by onAuthStateChanged
         document.getElementById('loadingIndicator').classList.toggle('hidden', !isLoading);
         document.getElementById('googleSignInBtn').disabled = isLoading;
     },
@@ -89,6 +99,7 @@ const appLogic = {
         });
 
         try {
+            // Note: Redirect is often problematic. Pop-up is generally more stable.
             await auth.signInWithRedirect(provider);
         } catch (error) {
             appLogic.showStatusMessage(`Sign In Failed: ${error.message}`, 'bg-red-500');
@@ -109,7 +120,7 @@ const appLogic = {
         }
     },
 
-    // --- FIREBASE DATA SYNC ---
+    // --- FIREBASE DATA SYNC (UNCHANGED) ---
     async setupDataListener() {
         if (!appLogic.userId) return;
 
@@ -117,6 +128,7 @@ const appLogic = {
         appLogic.setLoading(true);
 
         try {
+            // Use onSnapshot for real-time updates
             docRef.onSnapshot(doc => {
                 const data = doc.data() || {};
                 
@@ -156,22 +168,21 @@ const appLogic = {
         const docRef = db.collection('userGrowthHistory').doc(appLogic.userId);
 
         try {
-            await docRef.set({ history: appLogic.history });
+            // Use set with merge true to ensure only history field is updated (if other fields existed)
+            await docRef.set({ history: appLogic.history }, { merge: true }); 
         } catch (e) {
             appLogic.showStatusMessage(`Save failed: ${e.message}`, 'bg-red-500');
         }
     },
 
-    // --- TRACKER LOGIC (Omitting for brevity) ---
+    // --- TRACKER LOGIC (Omitting detailed implementation for brevity, logic remains the same) ---
     updateGoal(area, inputId) { 
         const input = document.getElementById(inputId);
         let goal = parseFloat(input.value);
-
         if (isNaN(goal) || goal <= 0) {
             goal = appLogic.DEFAULT_GOALS[area].goal; 
             input.value = goal;
         }
-
         appLogic.dailyGoalData[area].goal = goal;
         appLogic.saveHistory();
         appLogic.showStatusMessage(`Goal for ${area} updated to ${goal} ${appLogic.DEFAULT_GOALS[area].unit}.`, 'bg-blue-500');
@@ -188,7 +199,6 @@ const appLogic = {
 
         appLogic.dailyGoalData[area].progress += value;
         input.value = ''; 
-
         appLogic.saveHistory();
         appLogic.showStatusMessage(`Logged ${value} ${appLogic.DEFAULT_GOALS[area].unit} for ${area}!`, 'bg-green-500');
     },
@@ -196,46 +206,33 @@ const appLogic = {
     toggleMindsetStatus() { 
         const area = 'mindset';
         appLogic.dailyGoalData[area].is100 = !appLogic.dailyGoalData[area].is100;
-        
         appLogic.saveHistory();
-
-        if (appLogic.dailyGoalData[area].is100) {
-            appLogic.showStatusMessage('Mindset: BELIEVE 100% affirmed!', 'bg-yellow-400');
-        } else {
-            appLogic.showStatusMessage('Mindset status reset.', 'bg-gray-500');
-        }
+        appLogic.showStatusMessage(appLogic.dailyGoalData[area].is100 ? 'Mindset: BELIEVE 100% affirmed!' : 'Mindset status reset.', 'bg-yellow-400');
     },
 
     toggleSocialCheck() { 
          const area = 'character';
          appLogic.dailyGoalData[area].socialCheck = !appLogic.dailyGoalData[area].socialCheck;
-         
          appLogic.saveHistory();
-
-         if (appLogic.dailyGoalData[area].socialCheck) {
-             appLogic.showStatusMessage('Social goal accomplished! Made someone smile!', 'bg-purple-400');
-         } else {
-             appLogic.showStatusMessage('Social goal unchecked.', 'bg-gray-500');
-         }
+         appLogic.showStatusMessage(appLogic.dailyGoalData[area].socialCheck ? 'Social goal accomplished! Made someone smile!' : 'Social goal unchecked.', 'bg-purple-400');
     },
 
     resetDailyProgress() { 
         const todayKey = appLogic.getTodayDateKey();
         const currentGoals = appLogic.dailyGoalData;
-
-        const newDailyData = {
+        
+        appLogic.dailyGoalData = {
             academic: { progress: 0, goal: currentGoals.academic.goal },
             physical: { progress: 0, goal: currentGoals.physical.goal },
             character: { progress: 0, goal: currentGoals.character.goal, socialCheck: false },
             mindset: { status: 'Untoggled', is100: false },
             date: todayKey
         };
-        
-        appLogic.dailyGoalData = newDailyData; 
         appLogic.saveHistory();
         appLogic.showStatusMessage('Daily progress reset! New day, new opportunities!', 'bg-blue-600');
     },
-
+    
+    // --- UI RENDERING (UNCHANGED) ---
     renderUI() { 
         const todayKey = appLogic.getTodayDateKey();
         document.getElementById('todayDateDisplay').textContent = moment().format('ddd, MMM D, YYYY');
@@ -246,34 +243,37 @@ const appLogic = {
             const goal = data.goal || appLogic.DEFAULT_GOALS[area].goal;
             const progress = data.progress || 0;
 
-            document.getElementById(`${area}Goal`).value = goal;
+            const goalInput = document.getElementById(`${area}Goal`);
+            if (goalInput) goalInput.value = goal;
 
             const progressPercent = Math.min(100, (progress / goal) * 100);
             const progressBar = document.getElementById(`${area}ProgressBar`);
             const progressText = document.getElementById(`${area}ProgressText`);
             const card = document.getElementById(`${area}Card`);
 
-            progressBar.style.width = `${progressPercent}%`;
-            progressText.textContent = `${progress} / ${goal} (${Math.round(progressPercent)}%)`;
+            if (progressBar) progressBar.style.width = `${progressPercent}%`;
+            if (progressText) progressText.textContent = `${progress} / ${goal} (${Math.round(progressPercent)}%)`;
 
             card.classList.remove('ring-2', 'ring-offset-2', 'ring-green-400', 'ring-offset-white');
-            progressBar.classList.remove('!bg-green-600');
+            if (progressBar) progressBar.classList.remove('!bg-green-600');
 
             if (progressPercent >= 100) {
                 card.classList.add('ring-2', 'ring-offset-2', 'ring-green-400', 'ring-offset-white');
-                progressBar.classList.add('!bg-green-600');
+                if (progressBar) progressBar.classList.add('!bg-green-600');
             }
             
             if (area === 'character') {
                  const socialCheck = document.getElementById('socialCheck');
-                 if (data.socialCheck) {
-                     socialCheck.textContent = '✓ Done!';
-                     socialCheck.classList.add('text-green-600');
-                     socialCheck.classList.remove('text-blue-600');
-                 } else {
-                     socialCheck.textContent = '✓';
-                     socialCheck.classList.add('text-blue-600');
-                     socialCheck.classList.remove('text-green-600');
+                 if (socialCheck) {
+                     if (data.socialCheck) {
+                         socialCheck.textContent = '✓ Done!';
+                         socialCheck.classList.add('text-green-600');
+                         socialCheck.classList.remove('text-blue-600');
+                     } else {
+                         socialCheck.textContent = '✓';
+                         socialCheck.classList.add('text-blue-600');
+                         socialCheck.classList.remove('text-green-600');
+                     }
                  }
             }
         });
@@ -283,59 +283,50 @@ const appLogic = {
         const mindsetData = appLogic.dailyGoalData['mindset'];
         const is100 = mindsetData ? mindsetData.is100 : false;
 
-        if (is100) {
-            mindsetBtn.textContent = 'BELIEVE 100% Locked';
-            mindsetBtn.classList.remove('bg-yellow-400', 'hover:bg-yellow-500');
-            mindsetBtn.classList.add('bg-green-500', 'hover:bg-green-600');
-            mindsetFeedback.innerHTML = '<span class="status-badge bg-green-100 text-green-700">Mindset is Locked In!</span>';
-        } else {
-            mindsetBtn.textContent = 'Affirm Belief';
-            mindsetBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
-            mindsetBtn.classList.add('bg-yellow-400', 'hover:bg-yellow-500');
-            mindsetFeedback.innerHTML = '<span class="status-badge bg-yellow-100 text-yellow-700">Awaiting Affirmation</span>';
+        if (mindsetBtn && mindsetFeedback) {
+             if (is100) {
+                 mindsetBtn.textContent = 'BELIEVE 100% Locked';
+                 mindsetBtn.classList.remove('bg-yellow-400', 'hover:bg-yellow-500');
+                 mindsetBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+                 mindsetFeedback.innerHTML = '<span class="status-badge bg-green-100 text-green-700">Mindset is Locked In!</span>';
+             } else {
+                 mindsetBtn.textContent = 'Affirm Belief';
+                 mindsetBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+                 mindsetBtn.classList.add('bg-yellow-400', 'hover:bg-yellow-500');
+                 mindsetFeedback.innerHTML = '<span class="status-badge bg-yellow-100 text-yellow-700">Awaiting Affirmation</span>';
+             }
         }
+
 
         appLogic.setAnalysisPeriod(appLogic.activePeriod);
     },
     
-    getAnalysisDuration() { /* ... */ 
+    // --- ANALYSIS LOGIC (Omitting detailed implementation for brevity, logic remains the same) ---
+    getAnalysisDuration() { 
         const today = moment().startOf('day');
         let duration;
         let previousDuration;
         
         switch (appLogic.activePeriod) {
-            case 'week':
-                duration = 7;
-                previousDuration = 7;
-                break;
-            case 'month':
-                duration = 30; 
-                previousDuration = 30;
-                break;
-            case 'year':
-                duration = 365;
-                previousDuration = 365;
-                break;
+            case 'week': duration = 7; previousDuration = 7; break;
+            case 'month': duration = 30; previousDuration = 30; break;
+            case 'year': duration = 365; previousDuration = 365; break;
             case 'all':
                 const historyDates = Object.keys(appLogic.history).sort();
                 if (historyDates.length === 0) {
-                    duration = 1;
-                    previousDuration = 0;
-                    break;
+                    duration = 1; previousDuration = 0; break;
                 }
                 const firstDay = moment(historyDates[0], 'YYYY-MM-DD');
                 const totalDays = today.diff(firstDay, 'days') + 1;
-
                 duration = Math.ceil(totalDays / 2); 
                 previousDuration = Math.floor(totalDays / 2); 
                 break;
-            default:
-                duration = 7;
-                previousDuration = 7;
+            default: duration = 7; previousDuration = 7;
         }
         return { duration, previousDuration };
     },
-    getDailyPerformance(duration, endDate, startDate) { /* ... */
+
+    getDailyPerformance(duration, endDate, startDate) { 
         const dailyData = {};
         const areaKeys = appLogic.TRACKER_AREAS;
         
@@ -350,7 +341,7 @@ const appLogic = {
 
             areaKeys.forEach(area => {
                 const isMindset = area === 'mindset';
-                const areaData = data ? data[area] : appLogic.DEFAULT_GOALS[area];
+                const areaData = data && data[area] ? data[area] : appLogic.DEFAULT_GOALS[area];
                 
                 let completion;
                 if (isMindset) {
@@ -366,27 +357,40 @@ const appLogic = {
         }
         return dailyData;
     },
-    calculateAverages(periodData) { /* ... */
+
+    calculateAverages(periodData) { 
         const total = { academic: 0, physical: 0, character: 0 };
+        const areas = appLogic.TRACKER_AREAS.filter(a => a !== 'mindset');
         const days = Object.keys(periodData).length;
 
         Object.values(periodData).forEach(day => {
-            appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
+            areas.forEach(area => {
                  total[area] += day[area] || 0;
             });
         });
         
         const avg = {};
-        appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
+        areas.forEach(area => {
             avg[area] = days > 0 ? (total[area] / days) : 0;
         });
 
         const overallAvg = days > 0 ? 
-            (Object.values(avg).reduce((sum, val) => sum + val, 0) / 3) : 0;
+            (Object.values(avg).reduce((sum, val) => sum + val, 0) / areas.length) : 0;
             
         return { avg: avg, overallAvg: overallAvg, days: days };
     },
-    renderAnalysis() { /* ... */
+
+    setAnalysisPeriod(period) {
+        appLogic.activePeriod = period;
+        // Update button styles
+        document.querySelectorAll('.period-btn').forEach(btn => {
+            btn.classList.remove('period-active');
+        });
+        document.getElementById(`${period}Btn`).classList.add('period-active');
+        appLogic.renderAnalysis();
+    },
+
+    renderAnalysis() { 
         const { duration, previousDuration } = appLogic.getAnalysisDuration();
         const today = moment().startOf('day');
         
@@ -433,7 +437,8 @@ const appLogic = {
             appLogic.drawChart(area, labels, currentTrend, previousTrend);
         });
     },
-    drawChart(area, labels, currentTrend, previousTrend) { /* ... */
+
+    drawChart(area, labels, currentTrend, previousTrend) { 
         if (appLogic.charts[area]) {
             appLogic.charts[area].destroy();
         }
@@ -514,30 +519,51 @@ window.onload = function() {
          return;
     }
     
-    // 1. Check for pending redirect result (handles return from Google login)
-    auth.getRedirectResult().then((result) => {
-        if (result.user) {
-             appLogic.setLoading(false);
-             appLogic.showStatusMessage('Login successful via Google redirect!', 'bg-indigo-600');
+    // 1. Initial Authentication (Canvas Requirement)
+    // Attempt to sign in with the custom token or anonymously if the token is missing.
+    const initialAuth = async () => {
+        try {
+            if (initialAuthToken) {
+                await auth.signInWithCustomToken(initialAuthToken);
+            } else {
+                await auth.signInAnonymously();
+            }
+        } catch (error) {
+            console.error("Initial Auth Error:", error);
+            // Don't show a huge error if anonymous/custom token fails, let Google button handle it.
         }
-        document.getElementById('googleSignInBtn').disabled = false;
-
+    };
+    
+    // 2. Check for pending redirect result (handles return from Google login)
+    // We execute this, but let the state listener handle the UI toggle to prevent the loop.
+    auth.getRedirectResult().then(() => {
+        // Successfully processed redirect, state listener will fire next.
+        appLogic.showStatusMessage('Authentication flow processing...', 'bg-indigo-600');
     }).catch((error) => {
-        appLogic.showStatusMessage(`Redirect Error: ${error.message}`, 'bg-red-500');
-        appLogic.setLoading(false);
-        document.getElementById('googleSignInBtn').disabled = false; 
+        // Redirect failed (e.g., user closed window), state listener will handle the resulting (non-)user.
+        console.error("Redirect Error:", error);
     });
 
-    // 2. Main Auth Listener: Handles all login/logout state changes
-    auth.onAuthStateChanged(async (user) => {
+    // 3. Main Auth Listener: This is the SINGLE source of truth for UI visibility.
+    // It runs after all redirect checks and initial sign-ins, guaranteeing a stable state.
+    auth.onAuthStateChanged((user) => {
+        appLogic.setLoading(false); // Hide the loading screen now that state is known
+        document.getElementById('googleSignInBtn').disabled = false; // Enable the button
+
         if (user) {
             appLogic.setUserId(user.uid);
+            // Show the Tracker page
             document.getElementById('authContainer').classList.add('hidden');
             document.getElementById('trackerAppContainer').classList.remove('hidden');
+            appLogic.showStatusMessage('Welcome! Your progress is synced.', 'bg-green-600');
         } else {
             appLogic.setUserId(null); 
+            // Show the Sign-In screen
             document.getElementById('authContainer').classList.remove('hidden');
             document.getElementById('trackerAppContainer').classList.add('hidden');
         }
     });
+
+    // Start the initial auth process (which will trigger onAuthStateChanged)
+    initialAuth();
 };
