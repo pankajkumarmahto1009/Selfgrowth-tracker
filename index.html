@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Multi-Device Persistency Tracker</title>
     
-    <!-- PWA / Icon Setup (NEW ADDITIONS for Home Screen Icon) -->
+    <!-- PWA / Icon Setup -->
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" type="image/png" href="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEg-UEXBXjBr4mwMQ7_Kg7FxBqmXqySa9ZIL313e0nELBXPvYxRn0H0qI0FMeayrYnWzqfn-fNXJpf_AwtHeF7_lbAAlNsL2Jmuvh_01quTopId3ysTZT__Z0eKtTZ-ijImoj56cfdzEFfK6l5yunKo7Qs4lBj8tBzGxrILUL7bvO3NYv0fQWkJGIF30Xq8/s1024/1000134902.jpg" sizes="192x192">
     <meta name="theme-color" content="#4f46e5">
@@ -17,11 +17,6 @@
     <!-- Load Moment.js for date calculations -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
 
-    <!-- Firebase SDKs (Using compat versions for simplicity) -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-    
     <style>
         /* Custom styles for aesthetic */
         body {
@@ -58,6 +53,8 @@
             padding: 1.5rem;
             border-radius: 0.75rem;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            /* Ensure fixed width for scrolling on mobile grid items */
+            min-width: 180px;
         }
         /* Style for the active period button */
         .period-active {
@@ -65,6 +62,28 @@
             color: white;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
+        /* Style for date pickers */
+        input[type="date"] {
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem; 
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+            color: #4b5563;
+            background-color: #ffffff;
+            cursor: pointer;
+            transition: border-color 0.15s ease-in-out;
+            outline: none;
+        }
+        input[type="date"]:focus {
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+        }
+        /* Additional styling for the comparison report charts */
+        #comparisonChartGrid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        }
+
     </style>
 
 </head>
@@ -102,7 +121,7 @@
             <div class="text-center mb-8 p-3 bg-indigo-50 border-b border-indigo-200 rounded-lg max-w-lg mx-auto flex justify-between items-center">
                 <div class="text-left">
                     <p class="text-sm text-indigo-700 font-medium">Logging for: <span id="todayDateDisplay" class="font-mono font-bold"></span></p>
-                    <p class="text-xs text-indigo-500 mt-1">User ID: <span id="userIdDisplay" class="font-mono text-xs"></span></p>
+                    <p class="text-xs text-indigo-500 mt-1">User ID: <span id="userIdDisplay" class="font-mono text-xs break-all"></span></p>
                 </div>
                 <button onclick="appLogic.handleLogout()" class="text-xs text-red-500 hover:text-red-700 py-1 px-3 border border-red-300 rounded transition duration-150">Logout</button>
             </div>
@@ -110,16 +129,55 @@
             <!-- Mindset Card (Centerpiece) -->
             <div id="believeCard" class="bg-white p-6 rounded-xl border-l-4 border-yellow-400 max-w-lg mx-auto mb-8 shadow-lg">
                 <div class="flex flex-col items-center justify-center">
-                    <h2 class="text-3xl font-bold text-gray-800 mb-3">Believe 100%</h2>
+                    <h2 class="text-3xl font-bold text-gray-800 mb-3">Commit 100%</h2>
                     <p id="mindsetFeedback" class="text-gray-600 text-sm mb-4"></p>
                     <button id="mindsetStatusBtn" onclick="appLogic.toggleMindsetStatus()" class="bg-yellow-400 hover:bg-yellow-500 text-white font-semibold py-3 px-6 rounded-full transition duration-150 shadow-md transform hover:scale-105">
-                        Affirm Belief
+                        Affirm Commitment
                     </button>
                 </div>
             </div>
 
-            <!-- Growth Areas Grid -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+            <!-- Goal Action Buttons Container (ICON ONLY) -->
+            <div class="max-w-xl mx-auto mb-6 flex justify-end space-x-3">
+                <button onclick="appLogic.toggleCustomGoalForm()" id="toggleGoalFormBtn" class="p-3 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white transition duration-150 shadow-md" title="Add New Goal">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                </button>
+                
+                <button onclick="appLogic.showGoalDeletionModal()" id="editGoalsBtn" class="p-3 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700 transition duration-150 shadow-sm" title="Edit/Delete Goals">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                </button>
+            </div>
+            
+            <!-- Custom Goal Creator - NEW SECTION -->
+            <div id="customGoalCreator" class="max-w-xl mx-auto mb-8 p-6 bg-indigo-50 rounded-xl shadow-lg border border-indigo-200 hidden">
+                <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <svg class="w-6 h-6 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    Define Your New Tracker
+                </h2>
+                <div class="space-y-4">
+                    <input type="text" id="customGoalName" placeholder="e.g., Meditation, Journaling" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-400 focus:border-indigo-400">
+                    <div class="flex space-x-4">
+                        <input type="number" id="customGoalTarget" placeholder="Target Value (e.g., 20 or 30)" min="1" value="30" class="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-indigo-400 focus:border-indigo-400">
+                        <select id="customGoalUnit" class="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-indigo-400 focus:border-indigo-400 bg-white">
+                            <option value="Reps">Reps</option>
+                            <option value="Min">Minutes</option>
+                            <option value="Pages">Pages</option>
+                            <option value="Units">Units</option>
+                        </select>
+                    </div>
+                    <button onclick="appLogic.addCustomGoal()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition duration-150 shadow-md">
+                        Add New Tracker
+                    </button>
+                </div>
+            </div>
+
+            <!-- Custom Goals Grid (Dynamically inserted) -->
+            <div id="customGoalsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <!-- Custom Goal Cards will be inserted here by JavaScript -->
+            </div>
+
+            <!-- Fixed Growth Areas Grid (Original/Editable) -->
+            <div id="fixedGoalsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
 
                 <!-- Academic Knowledge -->
                 <div id="academicCard" class="tracker-card bg-white p-6 border-l-4 border-green-400">
@@ -191,7 +249,7 @@
                     </div>
                 </div>
 
-                <!-- Future Growth Area (Placeholder) -->
+                <!-- Future Growth Area (Placeholder/Hidden if fixed goals are active) -->
                 <div id="emptyCard" class="tracker-card bg-gray-100 p-6 border-l-4 border-gray-300 flex flex-col justify-center items-center">
                     <h3 class="text-xl font-semibold text-gray-500 mb-2 flex items-center">
                         <svg class="w-5 h-5 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m0-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -205,23 +263,62 @@
             <!-- --- ANALYSIS SECTION --- -->
             <h2 class="text-2xl font-bold text-gray-800 text-center mb-6 pt-4 border-t border-gray-300">Analysis & Trends</h2>
             
-            <!-- Period Selector -->
-            <div class="flex justify-center space-x-2 sm:space-x-4 mb-8 flex-wrap">
-                <button id="weekBtn" onclick="appLogic.setAnalysisPeriod('week')" class="period-btn py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base text-gray-700 border border-gray-300 hover:bg-indigo-100 transition duration-150 mb-2">
+            <!-- Period Selector for Comparative Analysis -->
+            <div class="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4 mb-8 flex-wrap">
+                <button id="weekBtn" onclick="appLogic.setAnalysisPeriod('week')" class="period-btn py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base text-gray-700 border border-gray-300 hover:bg-indigo-100 transition duration-150">
                     Compare Week
                 </button>
-                <button id="monthBtn" onclick="appLogic.setAnalysisPeriod('month')" class="period-btn py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base text-gray-700 border border-gray-300 hover:bg-indigo-100 transition duration-150 mb-2">
+                <button id="monthBtn" onclick="appLogic.setAnalysisPeriod('month')" class="period-btn py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base text-gray-700 border border-gray-300 hover:bg-indigo-100 transition duration-150">
                     Compare Month
                 </button>
-                <button id="yearBtn" onclick="appLogic.setAnalysisPeriod('year')" class="period-btn py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base text-gray-700 border border-gray-300 hover:bg-indigo-100 transition duration-150 mb-2">
+                <button id="yearBtn" onclick="appLogic.setAnalysisPeriod('year')" class="period-btn py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base text-gray-700 border border-gray-300 hover:bg-indigo-100 transition duration-150">
                     Compare Year
                 </button>
-                <button id="allBtn" onclick="appLogic.setAnalysisPeriod('all')" class="period-btn py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base text-gray-700 border border-gray-300 hover:bg-indigo-100 transition duration-150 mb-2">
+                <button id="allBtn" onclick="appLogic.setAnalysisPeriod('all')" class="period-btn py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base text-gray-700 border border-gray-300 hover:bg-indigo-100 transition duration-150">
                     Compare All Time
                 </button>
             </div>
+            
+            <!-- NEW: Custom Date Range Selector for A/B Comparison -->
+            <div class="max-w-4xl mx-auto mb-8 p-6 bg-gray-50 rounded-xl shadow-inner border border-gray-200">
+                <h3 class="text-lg font-bold text-gray-700 mb-4 text-center">A/B Range Comparison Setup</h3>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    
+                    <!-- Range A Selector -->
+                    <div class="bg-white p-4 rounded-lg shadow-sm border-2 border-pink-300">
+                        <h4 class="font-semibold text-pink-600 mb-2">Range A: <span id="rangeALabel" class="font-bold text-sm">Not Set</span></h4>
+                        <div class="flex space-x-2">
+                            <input type="date" id="startDatePickerA" class="w-1/2 p-2 border border-gray-300 rounded-lg text-sm">
+                            <input type="date" id="endDatePickerA" class="w-1/2 p-2 border border-gray-300 rounded-lg text-sm">
+                        </div>
+                        <button onclick="appLogic.selectComparisonRange('A')" class="w-full mt-3 bg-pink-500 hover:bg-pink-600 text-white font-semibold py-2 rounded-lg text-sm transition duration-150">
+                            Select Range A
+                        </button>
+                    </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-10">
+                    <!-- Range B Selector -->
+                    <div class="bg-white p-4 rounded-lg shadow-sm border-2 border-indigo-300">
+                        <h4 class="font-semibold text-indigo-600 mb-2">Range B: <span id="rangeBLabel" class="font-bold text-sm">Not Set</span></h4>
+                        <div class="flex space-x-2">
+                            <input type="date" id="startDatePickerB" class="w-1/2 p-2 border border-gray-300 rounded-lg text-sm">
+                            <input type="date" id="endDatePickerB" class="w-1/2 p-2 border border-gray-300 rounded-lg text-sm">
+                        </div>
+                        <button onclick="appLogic.selectComparisonRange('B')" class="w-full mt-3 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 rounded-lg text-sm transition duration-150">
+                            Select Range B
+                        </button>
+                    </div>
+
+                </div>
+
+                <!-- Comparison Button -->
+                <button id="compareABBtn" onclick="appLogic.startABComparison()" class="w-full mt-6 bg-gray-700 hover:bg-gray-800 text-white font-semibold py-3 rounded-lg transition duration-150 shadow-lg disabled:opacity-50" disabled>
+                    Compare Range A vs Range B
+                </button>
+            </div>
+            <!-- --- END A/B SETUP SECTION --- -->
+
+            <div id="comparativeAnalysisContainer" class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-10">
                 <!-- Comparison Card -->
                 <div class="analysis-card border-t-4 border-indigo-500 lg:col-span-1 flex flex-col justify-center items-center text-center">
                     <h3 class="text-lg font-semibold text-gray-700 mb-2">Growth Rate</h3>
@@ -244,22 +341,23 @@
                 </div>
 
                 <!-- Chart Cards (3/4 of space on large screens) -->
-                <div class="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <!-- Academic Chart -->
-                    <div class="analysis-card h-64 md:h-72">
-                        <canvas id="academicChart"></canvas>
-                    </div>
-                    <!-- Physical Chart -->
-                    <div class="analysis-card h-64 md:h-72">
-                        <canvas id="physicalChart"></canvas>
-                    </div>
-                    <!-- Character Chart -->
-                    <div class="analysis-card h-64 md:h-72">
-                        <canvas id="characterChart"></canvas>
+                <div class="lg:col-span-3 overflow-x-auto">
+                    <div id="chartGrid" class="flex flex-row space-x-6 pb-2 lg:grid lg:grid-cols-3 lg:gap-6 lg:space-x-0">
+                        <!-- Comparative Charts will be inserted here by JavaScript -->
                     </div>
                 </div>
             </div>
-            <!-- --- END ANALYSIS SECTION --- -->
+            <!-- --- END STANDARD COMPARATIVE ANALYSIS SECTION --- -->
+            
+            <!-- NEW: A/B Comparison Report Container (Hidden by default) -->
+            <div id="comparisonReportContainer" class="hidden mt-12 mb-10 pt-8 border-t border-gray-400">
+                <h3 class="text-2xl font-bold text-gray-800 text-center mb-6">
+                    A/B Comparison Report
+                </h3>
+                <div id="comparisonChartGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- A/B Comparison Charts will be inserted here by JavaScript -->
+                </div>
+            </div>
 
 
             <!-- Reset Button -->
@@ -270,14 +368,59 @@
             </div>
         </div>
     </div>
+    
+    <!-- *** GOAL EDIT/DELETION MODAL UI *** -->
+    <div id="goalEditModal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 z-[100] flex items-center justify-center transition-opacity duration-300 opacity-0">
+        <div class="bg-white rounded-xl p-8 shadow-2xl max-w-lg w-full transform scale-95 transition-transform duration-300">
+            <h3 class="text-2xl font-bold text-gray-900 mb-6 text-center">Manage Your Goals</h3>
+            
+            <div id="editableGoalList" class="space-y-4 max-h-96 overflow-y-auto pr-2">
+                <!-- Goal items will be injected here by renderGoalListForDeletion() -->
+            </div>
 
-    <script>
+            <div class="mt-8 text-center">
+                <button onclick="appLogic.hideGoalDeletionModal()" class="w-full px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md">
+                    Done Editing
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- *** END GOAL EDIT/DELETION MODAL UI *** -->
+    
+    <!-- *** CUSTOM CONFIRMATION MODAL UI (Used for Deletion Warning) *** -->
+    <div id="confirmationModal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 z-[101] flex items-center justify-center transition-opacity duration-300 opacity-0">
+        <div class="bg-white rounded-xl p-6 shadow-2xl max-w-sm w-full transform scale-95 transition-transform duration-300">
+            <div class="text-center">
+                <svg class="w-12 h-12 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                <h3 class="text-xl font-semibold text-gray-900 mb-2">Confirm Action</h3>
+                <p id="modalMessage" class="text-sm text-gray-600 mb-6 font-medium">
+                    Are you sure you want to proceed?
+                </p>
+                <div class="flex justify-center space-x-4">
+                    <button onclick="appLogic.modalActions.cancel()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition duration-150">
+                        Cancel
+                    </button>
+                    <button onclick="appLogic.modalActions.confirm()" id="confirmDeleteBtn" class="flex-1 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition duration-150 shadow-md">
+                        Confirm
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- *** END CUSTOM CONFIRMATION MODAL UI *** -->
+
+    <script type="module">
+        // --- FIREBASE MODULAR IMPORTS (V10+) ---
+        import { initializeApp, setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, query, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        // ----------------------------------------
+        
         // Global instance variables for Firebase services and tracking state
         let auth = null; 
         let db = null;   
 
-        // --- USER'S HARDCODED CONFIGURATION (CRITICAL FIX) ---
-        // This explicitly uses the keys you provided, overriding any potentially broken environment variable.
+        // --- FIREBASE CONFIGURATION (Using your supplied hardcoded config) ---
         const hardcodedFirebaseConfig = {
             apiKey: "AIzaSyBm04Z-D_62R6gVFPVpzXbeiYm8n--1m_0",
             authDomain: "selfgrowth-tracker.firebaseapp.com",
@@ -288,25 +431,45 @@
         };
         
         // Environment variables required for Canvas functionality
+        const firebaseConfig = hardcodedFirebaseConfig;
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : hardcodedFirebaseConfig.projectId; // Use project ID as fallback for appId
+        const appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId;
+
+        // Utility to safely retrieve the current user's ID
+        const getCurrentUserId = () => auth.currentUser?.uid;
 
         // App logic object to manage state and functions
-        const appLogic = {
+        window.appLogic = {
             // STATE
             userId: null,
             history: {}, 
             dailyGoalData: {}, 
-            charts: {}, 
-            activePeriod: 'week',
+            charts: {}, // Charts for comparative analysis (Week/Month/Year/All)
+            comparisonCharts: {}, // NEW: Charts for A/B comparison
+            activePeriod: 'week', 
+            customGoals: [], 
+            customGoalDefinitions: {}, 
+            isGoalFormVisible: false, 
+            isGoalEditModalVisible: false, 
+            activeGoalToDelete: null, 
+            rangeAData: null, // NEW: Stores selected Range A data
+            rangeBData: null, // NEW: Stores selected Range B data
 
             // CONSTANTS
             TRACKER_AREAS: ['academic', 'physical', 'character', 'mindset'],
             DEFAULT_GOALS: {
-                academic: { progress: 0, goal: 2, unit: 'Hrs' },
-                physical: { progress: 0, goal: 30, unit: 'Min' },
-                character: { progress: 0, goal: 10, unit: 'Pages', socialCheck: false },
-                mindset: { status: 'Untoggled', is100: false, unit: 'Affirmed' },
+                academic: { progress: 0, goal: 2, unit: 'Hrs', color: 'green' },
+                physical: { progress: 0, goal: 30, unit: 'Min', color: 'blue' },
+                character: { progress: 0, goal: 10, unit: 'Pages', socialCheck: false, color: 'purple' },
+                mindset: { status: 'Untoggled', is100: false, unit: 'Affirmed', color: 'yellow' },
+            },
+            
+            // Tailwind Color Map (for chart colors)
+            COLOR_MAP: {
+                green: 'rgba(52, 211, 153, 1)', blue: 'rgba(96, 165, 250, 1)', purple: 'rgba(167, 139, 250, 1)',
+                red: 'rgba(248, 113, 113, 1)', pink: 'rgba(236, 72, 153, 1)', teal: 'rgba(20, 184, 166, 1)',
+                orange: 'rgba(251, 146, 60, 1)', indigo: 'rgba(79, 70, 229, 1)', yellow: 'rgba(251, 191, 36, 1)',
+                pink_light: 'rgba(236, 72, 153, 0.6)', indigo_light: 'rgba(79, 70, 229, 0.6)' 
             },
             
             // --- UTILITIES & UI HELPERS ---
@@ -332,7 +495,48 @@
                 return moment().format('YYYY-MM-DD');
             },
 
-            // --- AUTHENTICATION HANDLERS (Pop-up) ---
+            // --- Goal Form and Edit/Delete Modal Management ---
+            toggleCustomGoalForm() {
+                appLogic.isGoalFormVisible = !appLogic.isGoalFormVisible;
+                const form = document.getElementById('customGoalCreator');
+                const button = document.getElementById('toggleGoalFormBtn');
+                
+                if (appLogic.isGoalFormVisible) {
+                    form.classList.remove('hidden');
+                    button.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+                    button.classList.add('bg-gray-500', 'hover:bg-gray-600');
+                    button.title = 'Hide Goal Form';
+                } else {
+                    form.classList.add('hidden');
+                    button.classList.remove('bg-gray-500', 'hover:bg-gray-600');
+                    button.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+                    button.title = 'Add New Goal';
+                }
+            },
+            
+            showGoalDeletionModal() {
+                appLogic.isGoalEditModalVisible = true;
+                appLogic.renderGoalListForDeletion();
+                const modal = document.getElementById('goalEditModal');
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    modal.classList.add('opacity-100');
+                    modal.querySelector('.transform').classList.remove('scale-95');
+                    modal.querySelector('.transform').classList.add('scale-100');
+                }, 10);
+            },
+
+            hideGoalDeletionModal() {
+                appLogic.isGoalEditModalVisible = false;
+                const modal = document.getElementById('goalEditModal');
+                modal.classList.remove('opacity-100');
+                modal.querySelector('.transform').classList.remove('scale-100');
+                modal.querySelector('.transform').classList.add('scale-95');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            },
+
+
+            // --- AUTHENTICATION HANDLERS ---
             async handleGoogleLogin() {
                 if (!auth) {
                      appLogic.showStatusMessage('Initialization Failed. Please refresh.', 'bg-red-500');
@@ -341,19 +545,18 @@
 
                 appLogic.setLoading(true);
 
-                const provider = new firebase.auth.GoogleAuthProvider();
+                const provider = new GoogleAuthProvider();
                 
                 provider.setCustomParameters({
                     prompt: 'select_account' 
                 });
 
                 try {
-                    // Use signInWithPopup to avoid redirect timing issues
-                    await auth.signInWithPopup(provider);
+                    await signInWithPopup(auth, provider);
                 } catch (error) {
                     if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
                         appLogic.showStatusMessage('Pop-up blocked or cancelled. Check browser settings.', 'bg-yellow-600');
-                    } else {
+                    } else if (error.code !== 'auth/popup-closed-by-user') {
                          appLogic.showStatusMessage(`Sign In Failed: ${error.message}`, 'bg-red-500');
                     }
                     appLogic.setLoading(false);
@@ -361,7 +564,7 @@
             },
 
             handleLogout() {
-                auth.signOut();
+                signOut(auth);
                 appLogic.showStatusMessage('Successfully logged out.', 'bg-gray-500');
             },
             
@@ -373,37 +576,120 @@
                 }
             },
 
-            // --- FIREBASE DATA SYNC ---
+            // --- FIREBASE DATA SYNC (MODULAR) ---
             async setupDataListener() {
                 if (!appLogic.userId) return;
 
-                // CRITICAL FIX: Construct the full, secure, user-specific path
-                const docRef = db.collection('artifacts').doc(appId).collection('users').doc(appLogic.userId).collection('growthData').doc('history');
+                const historyDocRef = doc(db, 'artifacts', appId, 'users', appLogic.userId, 'growthData', 'history');
+                const definitionsDocRef = doc(db, 'artifacts', appId, 'users', appLogic.userId, 'customGoals', 'definitions');
 
                 appLogic.setLoading(true);
+                
+                let historyLoaded = false;
+                let definitionsLoaded = false;
 
-                try {
-                    // Use onSnapshot to listen for real-time updates
-                    docRef.onSnapshot(docSnapshot => {
-                        const data = docSnapshot.data() || {};
-                        
-                        appLogic.history = data.history || {};
-                        
+                const checkComplete = () => {
+                    if (historyLoaded && definitionsLoaded) {
                         const todayKey = appLogic.getTodayDateKey();
                         let dailyData = appLogic.history[todayKey] || {};
 
-                        appLogic.dailyGoalData = Object.assign({}, appLogic.DEFAULT_GOALS, dailyData);
-                        appLogic.dailyGoalData.date = todayKey; 
+                        // 1. Load custom goals from the small definitions document
+                        appLogic.customGoals = Object.keys(appLogic.customGoalDefinitions).filter(area => !appLogic.TRACKER_AREAS.includes(area));
 
+                        // 2. Initialize today's data with fixed defaults AND custom goal definitions
+                        appLogic.dailyGoalData = Object.assign({}, appLogic.DEFAULT_GOALS);
+                        
+                        // Filter out fixed goals marked as deleted/hidden from rendering
+                        const activeFixedGoals = appLogic.TRACKER_AREAS.filter(area => 
+                           area === 'mindset' || // always include mindset
+                           !(appLogic.customGoalDefinitions[area] && appLogic.customGoalDefinitions[area].deleted)
+                        );
+                        
+                        // Clear out default data for fixed goals that have been deleted/hidden by the user
+                        Object.keys(appLogic.DEFAULT_GOALS).forEach(area => {
+                            if (!activeFixedGoals.includes(area)) {
+                                delete appLogic.dailyGoalData[area];
+                            }
+                        });
+
+
+                        // Merge custom definitions into appLogic.dailyGoalData for today's goals
+                        appLogic.customGoals.forEach(area => {
+                            const def = appLogic.customGoalDefinitions[area];
+                            appLogic.dailyGoalData[area] = Object.assign({ progress: 0 }, def);
+                        });
+
+                        // 3. Overlay today's progress from history
+                        appLogic.dailyGoalData = Object.assign(appLogic.dailyGoalData, dailyData);
+                        appLogic.dailyGoalData.date = todayKey; 
+                        
                         appLogic.renderUI();
                         appLogic.setLoading(false);
+                    }
+                };
+
+                try {
+                    // Listener for large History data 
+                    onSnapshot(historyDocRef, docSnapshot => {
+                        const data = docSnapshot.data() || {};
+                        appLogic.history = data.history || {};
+                        historyLoaded = true;
+                        checkComplete();
                     }, error => {
-                        appLogic.showStatusMessage(`Database Error: ${error.message}`, 'bg-red-500');
-                        appLogic.setLoading(false);
+                        appLogic.showStatusMessage(`History DB Error: ${error.message}`, 'bg-red-500');
+                        console.error("Firestore History Error:", error);
+                        historyLoaded = true;
+                        checkComplete();
                     });
+
+                    // Listener for small Definitions data 
+                    onSnapshot(definitionsDocRef, docSnapshot => {
+                        appLogic.customGoalDefinitions = docSnapshot.data() || {};
+                        definitionsLoaded = true;
+                        checkComplete();
+                    }, error => {
+                        appLogic.showStatusMessage(`Definitions DB Error: ${error.message}`, 'bg-red-500');
+                        console.error("Firestore Definitions Error:", error);
+                        definitionsLoaded = true;
+                        checkComplete();
+                    });
+
                 } catch (e) {
-                    appLogic.showStatusMessage('Failed to set up data listener.', 'bg-red-500');
+                    appLogic.showStatusMessage('Failed to set up data listeners.', 'bg-red-500');
                     appLogic.setLoading(false);
+                }
+            },
+            
+            saveCustomGoalDefinitions() {
+                if (!appLogic.userId) return;
+                const definitionsDocRef = doc(db, 'artifacts', appId, 'users', appLogic.userId, 'customGoals', 'definitions');
+                
+                const definitionsToSave = {};
+                
+                // 1. Save custom goals definitions
+                appLogic.customGoals.forEach(area => {
+                    const data = appLogic.dailyGoalData[area];
+                    if (data) {
+                        definitionsToSave[area] = {
+                            goal: data.goal,
+                            unit: data.unit,
+                            color: data.color && data.color !== 'undefined' ? data.color : 'indigo' 
+                        };
+                    }
+                });
+                
+                // 2. Save deletion flags for fixed goals
+                appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
+                     if (appLogic.customGoalDefinitions[area] && appLogic.customGoalDefinitions[area].deleted) {
+                         definitionsToSave[area] = { deleted: true };
+                     }
+                });
+
+
+                try {
+                    setDoc(definitionsDocRef, definitionsToSave);
+                } catch (e) {
+                    appLogic.showStatusMessage(`Definition save failed: ${e.message}`, 'bg-red-500');
                 }
             },
 
@@ -414,34 +700,62 @@
                 }
 
                 const todayKey = appLogic.getTodayDateKey();
+                const historyDocRef = doc(db, 'artifacts', appId, 'users', appLogic.userId, 'growthData', 'history');
+
+                const dataToSave = {};
                 
+                // Determine all active goals to save
+                const activeFixed = appLogic.TRACKER_AREAS.filter(area => 
+                    area === 'mindset' || 
+                    !(appLogic.customGoalDefinitions[area] && appLogic.customGoalDefinitions[area].deleted)
+                );
+                
+                const allActiveGoals = activeFixed.concat(appLogic.customGoals);
+
+                allActiveGoals.forEach(area => {
+                    if (appLogic.dailyGoalData[area]) {
+                         dataToSave[area] = appLogic.dailyGoalData[area];
+                    }
+                });
+
                 appLogic.history[todayKey] = {
-                    ...appLogic.dailyGoalData,
+                    ...dataToSave,
                     date: todayKey
                 };
-
-                // CRITICAL FIX: Construct the full, secure, user-specific path
-                const docRef = db.collection('artifacts').doc(appId).collection('users').doc(appLogic.userId).collection('growthData').doc('history');
-
+                
                 try {
-                    // Use set with merge: true to save the updated history map
-                    await docRef.set({ history: appLogic.history }, { merge: true });
+                    // Update the entire history object with the current day's update
+                    await setDoc(historyDocRef, { history: appLogic.history });
                 } catch (e) {
-                    appLogic.showStatusMessage(`Save failed: ${e.message}`, 'bg-red-500');
+                    appLogic.showStatusMessage(`History save failed: ${e.message}`, 'bg-red-500');
                 }
             },
 
-            // --- TRACKER LOGIC (Omitting for brevity) ---
+            // --- TRACKER LOGIC ---
             updateGoal(area, inputId) { 
                 const input = document.getElementById(inputId);
                 let goal = parseFloat(input.value);
+                
                 if (isNaN(goal) || goal <= 0) {
-                    goal = appLogic.DEFAULT_GOALS[area].goal; 
+                    const defaultGoal = appLogic.DEFAULT_GOALS[area] ? appLogic.DEFAULT_GOALS[area].goal : 30; 
+                    goal = defaultGoal;
                     input.value = goal;
+                    appLogic.showStatusMessage('Goal must be a positive number.', 'bg-yellow-600');
                 }
+                
+                if (!appLogic.dailyGoalData[area]) {
+                    appLogic.dailyGoalData[area] = Object.assign({ progress: 0 }, appLogic.customGoalDefinitions[area] || appLogic.DEFAULT_GOALS[area] || { unit: 'Units', color: 'indigo' });
+                }
+                
                 appLogic.dailyGoalData[area].goal = goal;
+                
+                // Save definitions only for custom goals (fixed goals goal is saved in history)
+                if (appLogic.customGoals.includes(area)) {
+                    appLogic.saveCustomGoalDefinitions();
+                }
+
                 appLogic.saveHistory();
-                appLogic.showStatusMessage(`Goal for ${area} updated to ${goal} ${appLogic.DEFAULT_GOALS[area].unit}.`, 'bg-blue-500');
+                appLogic.showStatusMessage(`Goal for ${area.replace(/_/g, ' ')} updated to ${goal} ${appLogic.dailyGoalData[area].unit}.`, 'bg-blue-500');
             },
 
             updateTracker(area, inputId) { 
@@ -452,10 +766,15 @@
                     appLogic.showStatusMessage('Please enter a valid positive number.', 'bg-red-500');
                     return;
                 }
-                appLogic.dailyGoalData[area].progress += value;
+                
+                 if (!appLogic.dailyGoalData[area]) {
+                    appLogic.dailyGoalData[area] = Object.assign({ progress: 0 }, appLogic.customGoalDefinitions[area] || appLogic.DEFAULT_GOALS[area]);
+                }
+
+                appLogic.dailyGoalData[area].progress = (appLogic.dailyGoalData[area].progress || 0) + value;
                 input.value = ''; 
                 appLogic.saveHistory();
-                appLogic.showStatusMessage(`Logged ${value} ${appLogic.DEFAULT_GOALS[area].unit} for ${area}!`, 'bg-green-500');
+                appLogic.showStatusMessage(`Logged ${value} ${appLogic.dailyGoalData[area].unit} for ${area.replace(/_/g, ' ')}!`, 'bg-green-500');
             },
 
             toggleMindsetStatus() { 
@@ -463,16 +782,20 @@
                 appLogic.dailyGoalData[area].is100 = !appLogic.dailyGoalData[area].is100;
                 appLogic.saveHistory();
                 if (appLogic.dailyGoalData[area].is100) {
-                    appLogic.showStatusMessage('Mindset: BELIEVE 100% affirmed!', 'bg-yellow-400');
+                    appLogic.showStatusMessage('Commitment: 100% affirmed!', 'bg-yellow-400');
                 } else {
-                    appLogic.showStatusMessage('Mindset status reset.', 'bg-gray-500');
+                    appLogic.showStatusMessage('Commitment status reset.', 'bg-gray-500');
                 }
             },
-
+            
             toggleSocialCheck() { 
                  const area = 'character';
+                 if (!appLogic.dailyGoalData[area]) {
+                    appLogic.dailyGoalData[area] = Object.assign({ progress: 0, socialCheck: false }, appLogic.DEFAULT_GOALS[area]);
+                }
                  appLogic.dailyGoalData[area].socialCheck = !appLogic.dailyGoalData[area].socialCheck;
                  appLogic.saveHistory();
+                 appLogic.renderUI();
                  if (appLogic.dailyGoalData[area].socialCheck) {
                      appLogic.showStatusMessage('Social goal accomplished! Made someone smile!', 'bg-purple-400');
                  } else {
@@ -481,42 +804,335 @@
             },
 
             resetDailyProgress() { 
-                const todayKey = appLogic.getTodayDateKey();
-                const currentGoals = appLogic.dailyGoalData;
-                const newDailyData = {
-                    academic: { progress: 0, goal: currentGoals.academic.goal },
-                    physical: { progress: 0, goal: currentGoals.physical.goal },
-                    character: { progress: 0, goal: currentGoals.character.goal, socialCheck: false },
-                    mindset: { status: 'Untoggled', is100: false },
-                    date: todayKey
-                };
-                appLogic.dailyGoalData = newDailyData; 
-                appLogic.saveHistory();
-                appLogic.showStatusMessage('Daily progress reset! New day, new opportunities!', 'bg-blue-600');
+                appLogic.modalActions.show(
+                    'Confirm Daily Reset',
+                    'Are you sure you want to **reset all progress for today**? This is typically done at the start of a new day.',
+                    'Confirm Reset',
+                    () => {
+                        const todayKey = appLogic.getTodayDateKey();
+                        const currentGoals = appLogic.dailyGoalData;
+                        const newDailyData = { date: todayKey };
+                        
+                        const activeFixedGoals = appLogic.TRACKER_AREAS.filter(area => 
+                           area === 'mindset' || 
+                           !(appLogic.customGoalDefinitions[area] && appLogic.customGoalDefinitions[area].deleted)
+                        );
+                        const allGoals = activeFixedGoals.filter(a => a !== 'mindset').concat(appLogic.customGoals, 'mindset');
+
+
+                        allGoals.forEach(area => {
+                            const data = currentGoals[area] || appLogic.DEFAULT_GOALS[area] || appLogic.customGoalDefinitions[area];
+                            if (data) {
+                                newDailyData[area] = { 
+                                    progress: 0, 
+                                    goal: data.goal, 
+                                    unit: data.unit || 'Units', 
+                                    color: data.color || 'indigo',
+                                    ...(area === 'character' && { socialCheck: false })
+                                };
+                            }
+                        });
+
+                        newDailyData['mindset'] = { status: 'Untoggled', is100: false, color: 'yellow' };
+
+                        appLogic.dailyGoalData = newDailyData; 
+                        appLogic.saveHistory();
+                        appLogic.showStatusMessage('Daily progress reset! New day, new opportunities!', 'bg-blue-600');
+                    }
+                );
+            },
+            
+            // --- GOAL DELETION LOGIC ---
+            renderGoalListForDeletion() {
+                const listContainer = document.getElementById('editableGoalList');
+                listContainer.innerHTML = '';
+                
+                const deletableFixedGoals = appLogic.TRACKER_AREAS.filter(a => a !== 'mindset');
+                const allAreas = deletableFixedGoals.concat(appLogic.customGoals);
+
+                allAreas.forEach(area => {
+                    const data = appLogic.dailyGoalData[area] || appLogic.DEFAULT_GOALS[area] || appLogic.customGoalDefinitions[area];
+                    if (!data) return;
+
+                    const areaLabel = area.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    const isCustom = appLogic.customGoals.includes(area);
+                    const statusText = isCustom ? 
+                        `<span class="text-xs text-indigo-500 font-medium ml-2">(Custom)</span>` : 
+                        (appLogic.customGoalDefinitions[area] && appLogic.customGoalDefinitions[area].deleted) ?
+                        `<span class="text-xs text-red-500 font-medium ml-2">(Hidden)</span>` : 
+                        `<span class="text-xs text-gray-500 font-medium ml-2">(Fixed)</span>`;
+
+                    listContainer.insertAdjacentHTML('beforeend', `
+                        <div class="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
+                            <span class="text-lg font-medium text-gray-800 flex items-center">
+                                ${areaLabel} ${statusText}
+                            </span>
+                            <button onclick="appLogic.confirmGoalDeletion('${area}')" 
+                                class="flex items-center space-x-1 px-3 py-1 bg-red-500 text-white text-sm font-semibold rounded-full hover:bg-red-600 transition duration-150 transform hover:scale-[1.03]">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3m-3 0h14"></path></svg>
+                                <span>Delete</span>
+                            </button>
+                        </div>
+                    `);
+                });
             },
 
+            confirmGoalDeletion(area) {
+                appLogic.activeGoalToDelete = area;
+                appLogic.modalActions.show(
+                    'Confirm Goal Deletion',
+                    `Are you absolutely sure you want to permanently delete the **${area.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}** goal? This action will **delete ALL its history** from the database and is irreversible.`,
+                    'Erase Goal & History',
+                    () => appLogic.executeGoalDeletion()
+                );
+            },
+            
+            executeGoalDeletion() {
+                const area = appLogic.activeGoalToDelete;
+                if (!area) return;
+
+                appLogic.hideGoalDeletionModal(); 
+
+                const isFixedGoal = appLogic.TRACKER_AREAS.includes(area) && !appLogic.customGoals.includes(area);
+
+                if (appLogic.dailyGoalData[area]) {
+                    delete appLogic.dailyGoalData[area];
+                }
+
+                Object.keys(appLogic.history).forEach(dateKey => {
+                    if (appLogic.history[dateKey] && appLogic.history[dateKey][area]) {
+                        delete appLogic.history[dateKey][area];
+                    }
+                });
+
+                if (isFixedGoal) {
+                    appLogic.customGoalDefinitions[area] = { deleted: true };
+                } else {
+                    appLogic.customGoals = appLogic.customGoals.filter(g => g !== area);
+                    if (appLogic.customGoalDefinitions[area]) {
+                        delete appLogic.customGoalDefinitions[area];
+                    }
+                }
+                
+                appLogic.saveCustomGoalDefinitions();
+                appLogic.saveHistory();
+                
+                appLogic.activeGoalToDelete = null;
+                appLogic.renderUI();
+                
+                if (appLogic.isGoalEditModalVisible) {
+                    appLogic.showGoalDeletionModal();
+                }
+
+                appLogic.showStatusMessage(`${area.replace(/_/g, ' ')} goal successfully erased!`, 'bg-red-600');
+            },
+
+
+            // --- MODAL ACTIONS ---
+            modalActions: {
+                currentConfirmationCallback: null,
+
+                show(title, message, confirmText, callback) {
+                    const modal = document.getElementById('confirmationModal');
+                    const modalTitle = modal.querySelector('h3');
+                    const modalMessage = document.getElementById('modalMessage');
+                    const confirmBtn = document.getElementById('confirmDeleteBtn');
+                    
+                    modalTitle.textContent = title;
+                    modalMessage.innerHTML = message;
+                    confirmBtn.textContent = confirmText;
+                    
+                    if (confirmText.toLowerCase().includes('erase') || confirmText.toLowerCase().includes('delete')) {
+                         confirmBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+                         confirmBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+                    } else {
+                         confirmBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+                         confirmBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+                    }
+
+                    appLogic.modalActions.currentConfirmationCallback = callback;
+                    
+                    modal.classList.remove('hidden');
+                    setTimeout(() => {
+                        modal.classList.add('opacity-100');
+                        modal.querySelector('.transform').classList.remove('scale-95');
+                        modal.querySelector('.transform').classList.add('scale-100');
+                    }, 10);
+                },
+
+                hide() {
+                    const modal = document.getElementById('confirmationModal');
+                    modal.classList.remove('opacity-100');
+                    modal.querySelector('.transform').classList.remove('scale-100');
+                    modal.querySelector('.transform').classList.add('scale-95');
+                    setTimeout(() => modal.classList.add('hidden'), 300);
+                    appLogic.activeGoalToDelete = null; 
+                },
+
+                cancel() {
+                    appLogic.modalActions.hide();
+                    appLogic.modalActions.currentConfirmationCallback = null;
+                },
+
+                confirm() {
+                    if (appLogic.modalActions.currentConfirmationCallback) {
+                        appLogic.modalActions.currentConfirmationCallback();
+                    }
+                    appLogic.modalActions.hide();
+                }
+            },
+            
+            // --- RENDER CARD AND ADD GOAL ---
+            renderCard(area, data, label) {
+                const safeColor = data.color && ['green', 'blue', 'purple', 'red', 'indigo', 'yellow', 'pink', 'teal', 'orange'].includes(data.color) ? data.color : 'indigo';
+                
+                const customSvgPath = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>';
+
+                return `
+                    <div id="${area}Card" class="tracker-card bg-white p-6 border-l-4 border-${safeColor}-400">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center justify-between">
+                            <span class="flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-${safeColor}-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">${customSvgPath}</svg>
+                                ${label}
+                            </span>
+                        </h3>
+                        <label for="${area}Goal" class="text-sm font-medium text-gray-500">Goal: ${data.unit}</label>
+                        <input type="number" id="${area}Goal" onchange="appLogic.updateGoal('${area}', '${area}Goal')" value="${data.goal || 30}" min="1" class="w-full mt-1 p-2 border border-gray-300 rounded-lg focus:ring-${safeColor}-400 focus:border-${safeColor}-400">
+                        <div class="mt-4">
+                            <p class="text-sm font-medium text-gray-700 mb-1">Daily Progress</p>
+                            <div class="flex items-center space-x-2">
+                                <input type="number" id="${area}Input" placeholder="0" min="0" step="1" class="w-2/3 p-2 border border-gray-300 rounded-lg focus:ring-${safeColor}-400 focus:border-${safeColor}-400">
+                                <button onclick="appLogic.updateTracker('${area}', '${area}Input')" class="w-1/3 bg-${safeColor}-400 hover:bg-${safeColor}-500 text-white font-semibold py-2 rounded-lg transition duration-150">Log</button>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <p class="text-gray-700 text-sm font-medium">Progress: <span id="${area}ProgressText" class="font-bold">0%</span></p>
+                            <div class="w-full bg-gray-200 progress-bar mt-1">
+                                <div id="${area}ProgressBar" class="progress-bar bg-${safeColor}-400" style="width: 0%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            },
+            
+            addCustomGoal() {
+                const nameInput = document.getElementById('customGoalName');
+                const targetInput = document.getElementById('customGoalTarget');
+                const unitInput = document.getElementById('customGoalUnit');
+
+                const name = nameInput.value.trim();
+                const target = parseFloat(targetInput.value);
+                const unit = unitInput.value;
+
+                if (!name || isNaN(target) || target <= 0) {
+                    appLogic.showStatusMessage('Please enter a valid name and positive goal.', 'bg-red-500');
+                    return;
+                }
+
+                const areaKey = name.toLowerCase().replace(/[^a-z0-9]/g, '_'); 
+                
+                const isFixedGoal = appLogic.TRACKER_AREAS.includes(areaKey);
+                const isCustomGoal = appLogic.customGoals.includes(areaKey);
+
+                if (isFixedGoal || isCustomGoal) {
+                    // Re-activate a deleted fixed goal
+                    if (isFixedGoal && appLogic.customGoalDefinitions[areaKey] && appLogic.customGoalDefinitions[areaKey].deleted) {
+                         delete appLogic.customGoalDefinitions[areaKey].deleted;
+                         appLogic.saveCustomGoalDefinitions();
+                         appLogic.renderUI();
+                         appLogic.toggleCustomGoalForm(); 
+                         appLogic.showStatusMessage(`Fixed Goal '${name}' reactivated!`, 'bg-indigo-600');
+                         return;
+                    }
+                    appLogic.showStatusMessage(`Goal '${name}' already exists.`, 'bg-yellow-600');
+                    return;
+                }
+                
+                const colors = ['indigo', 'pink', 'teal', 'orange'];
+                const color = colors[appLogic.customGoals.length % colors.length];
+
+                const newGoalDefinition = {
+                    goal: target, unit: unit, color: color
+                };
+                
+                appLogic.customGoalDefinitions[areaKey] = newGoalDefinition;
+                appLogic.dailyGoalData[areaKey] = Object.assign({ progress: 0 }, newGoalDefinition);
+                appLogic.customGoals.push(areaKey);
+
+                nameInput.value = '';
+                targetInput.value = 30;
+                unitInput.value = 'Reps';
+                
+                appLogic.saveCustomGoalDefinitions();
+                appLogic.saveHistory();
+                appLogic.toggleCustomGoalForm(); 
+
+                appLogic.showStatusMessage(`Custom Goal '${name}' added!`, 'bg-indigo-600');
+            },
+
+
+            // --- RENDER UI ---
             renderUI() { 
                 document.getElementById('todayDateDisplay').textContent = moment().format('ddd, MMM D, YYYY');
                 
+                const customGoalsGrid = document.getElementById('customGoalsGrid');
+                customGoalsGrid.innerHTML = ''; 
+
+                const activeFixedGoals = appLogic.TRACKER_AREAS.filter(area => 
+                    area === 'mindset' || // always include mindset
+                    !(appLogic.customGoalDefinitions[area] && appLogic.customGoalDefinitions[area].deleted)
+                ).filter(a => a !== 'mindset'); 
+
+                const allTrackedAreas = activeFixedGoals.concat(appLogic.customGoals);
+                
+                // 1. Manage visibility of fixed goals and placeholder
                 appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
-                    const data = appLogic.dailyGoalData[area];
-                    const goal = data.goal || appLogic.DEFAULT_GOALS[area].goal;
+                     const card = document.getElementById(`${area}Card`);
+                     if (card) { 
+                         card.classList.toggle('hidden', !activeFixedGoals.includes(area)); 
+                     }
+                });
+
+                const fixedGoalCount = activeFixedGoals.length;
+                const emptyCard = document.getElementById('emptyCard');
+                if (emptyCard) {
+                    emptyCard.classList.toggle('hidden', fixedGoalCount >= 4);
+                }
+
+
+                // 2. Render/Update Active Cards (Fixed and Custom)
+                allTrackedAreas.forEach(area => {
+                    const data = appLogic.dailyGoalData[area] || appLogic.DEFAULT_GOALS[area] || appLogic.customGoalDefinitions[area];
+                    if (!data) return; 
+                    
+                    const goal = data.goal || 1; 
                     const progress = data.progress || 0;
-                    document.getElementById(`${area}Goal`).value = goal;
+                    const colorCode = data.color || 'indigo';
+                    
+                    if (appLogic.customGoals.includes(area)) {
+                        const areaLabel = area.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        if (!document.getElementById(`${area}Card`)) {
+                             customGoalsGrid.insertAdjacentHTML('beforeend', appLogic.renderCard(area, data, areaLabel));
+                        }
+                    } 
+
                     const progressPercent = Math.min(100, (progress / goal) * 100);
                     const progressBar = document.getElementById(`${area}ProgressBar`);
                     const progressText = document.getElementById(`${area}ProgressText`);
                     const card = document.getElementById(`${area}Card`);
+                    
+                    if (progressBar && progressText && card) { 
+                        progressBar.style.width = `${progressPercent}%`;
+                        progressText.textContent = `${progress} / ${goal} ${data.unit} (${Math.round(progressPercent)}%)`;
 
-                    progressBar.style.width = `${progressPercent}%`;
-                    progressText.textContent = `${progress} / ${goal} (${Math.round(progressPercent)}%)`;
+                        // Remove ring classes for safety and only re-add if goal met
+                        const ringClasses = ['ring-green-400', 'ring-blue-400', 'ring-purple-400', 'ring-red-400', 'ring-indigo-400', 'ring-offset-white'];
+                        card.classList.remove('ring-2', 'ring-offset-2', ...ringClasses);
 
-                    card.classList.remove('ring-2', 'ring-offset-2', 'ring-green-400', 'ring-offset-white');
-                    progressBar.classList.remove('!bg-green-600');
-
-                    if (progressPercent >= 100) {
-                        card.classList.add('ring-2', 'ring-offset-2', 'ring-green-400', 'ring-offset-white');
-                        progressBar.classList.add('!bg-green-600');
+                        if (progressPercent >= 100) {
+                            const ringColor = area === 'academic' ? 'green' : area === 'physical' ? 'blue' : area === 'character' ? 'purple' : colorCode;
+                            card.classList.add('ring-2', 'ring-offset-2', `ring-${ringColor}-400`, 'ring-offset-white');
+                        }
                     }
                     
                     if (area === 'character') {
@@ -528,58 +1144,368 @@
                     }
                 });
 
+                // 3. Render Mindset Card
                 const mindsetBtn = document.getElementById('mindsetStatusBtn');
                 const mindsetFeedback = document.getElementById('mindsetFeedback');
-                const mindsetData = appLogic.dailyGoalData['mindset'];
-                const is100 = mindsetData ? mindsetData.is100 : false;
+                const mindsetData = appLogic.dailyGoalData['mindset'] || appLogic.DEFAULT_GOALS['mindset'];
+                const is100 = mindsetData.is100;
 
                 if (is100) {
-                    mindsetBtn.textContent = 'BELIEVE 100% Locked';
+                    mindsetBtn.textContent = 'COMMITMENT Locked';
                     mindsetBtn.classList.remove('bg-yellow-400', 'hover:bg-yellow-500');
                     mindsetBtn.classList.add('bg-green-500', 'hover:bg-green-600');
-                    mindsetFeedback.innerHTML = '<span class="status-badge bg-green-100 text-green-700">Mindset is Locked In!</span>';
+                    mindsetFeedback.innerHTML = '<span class="status-badge bg-green-100 text-green-700">Commitment is Locked In!</span>';
+                    document.getElementById('believeCard').classList.remove('border-yellow-400');
+                    document.getElementById('believeCard').classList.add('border-green-400');
+
                 } else {
-                    mindsetBtn.textContent = 'Affirm Belief';
+                    mindsetBtn.textContent = 'Affirm Commitment';
                     mindsetBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
                     mindsetBtn.classList.add('bg-yellow-400', 'hover:bg-yellow-500');
                     mindsetFeedback.innerHTML = '<span class="status-badge bg-yellow-100 text-yellow-700">Awaiting Affirmation</span>';
+                    document.getElementById('believeCard').classList.remove('border-green-400');
+                    document.getElementById('believeCard').classList.add('border-yellow-400');
+                }
+                
+                // 4. Initialize date pickers for A/B comparison
+                const todayFormatted = moment().format('YYYY-MM-DD');
+                if (document.getElementById('startDatePickerA')) {
+                    document.getElementById('startDatePickerA').value = moment().subtract(14, 'days').format('YYYY-MM-DD');
+                    document.getElementById('endDatePickerA').value = moment().subtract(7, 'days').format('YYYY-MM-DD');
+                    document.getElementById('startDatePickerB').value = moment().subtract(6, 'days').format('YYYY-MM-DD');
+                    document.getElementById('endDatePickerB').value = todayFormatted;
+                    
+                    document.getElementById('compareABBtn').disabled = true;
+                    document.getElementById('compareABBtn').classList.remove('bg-green-600', 'hover:bg-green-700');
+                    document.getElementById('compareABBtn').classList.add('bg-gray-700', 'hover:bg-gray-800');
+                    document.getElementById('rangeALabel').textContent = 'Not Set';
+                    document.getElementById('rangeBLabel').textContent = 'Not Set';
+                    appLogic.rangeAData = null;
+                    appLogic.rangeBData = null;
                 }
 
                 appLogic.setAnalysisPeriod(appLogic.activePeriod);
             },
             
-            // --- ANALYSIS & CHARTING (Omitting implementation for brevity, logic remains) ---
+            // --- A/B COMPARISON LOGIC ---
+
+            selectComparisonRange(rangeName) {
+                const startInput = document.getElementById(`startDatePicker${rangeName}`);
+                const endInput = document.getElementById(`endDatePicker${rangeName}`);
+                const labelElement = document.getElementById(`range${rangeName}Label`);
+                const compareBtn = document.getElementById('compareABBtn');
+                
+                const startDate = moment(startInput.value, 'YYYY-MM-DD').startOf('day');
+                const endDate = moment(endInput.value, 'YYYY-MM-DD').startOf('day');
+
+                if (!startDate.isValid() || !endDate.isValid() || startDate.isAfter(endDate)) {
+                    appLogic.showStatusMessage(`Please select valid dates for Range ${rangeName}.`, 'bg-red-500');
+                    return;
+                }
+
+                if (endDate.diff(startDate, 'days') > 365) {
+                    appLogic.showStatusMessage('Range limit is 365 days for chart performance.', 'bg-yellow-600');
+                }
+                
+                const { dailyData, labels, days, overallAvgText } = appLogic.getRangePerformanceForComparison(startDate, endDate);
+
+                const rangeData = {
+                    startDate: startDate.format('YYYY-MM-DD'),
+                    endDate: endDate.format('YYYY-MM-DD'),
+                    dailyData: dailyData,
+                    labels: labels,
+                    days: days,
+                    average: overallAvgText,
+                    displayLabel: `${startDate.format('MMM D')} - ${endDate.format('MMM D')} (${days} days)`
+                };
+
+                if (rangeName === 'A') {
+                    appLogic.rangeAData = rangeData;
+                } else {
+                    appLogic.rangeBData = rangeData;
+                }
+                
+                labelElement.textContent = rangeData.displayLabel;
+                appLogic.showStatusMessage(`Range ${rangeName} set: ${rangeData.displayLabel}`, `bg-${rangeName === 'A' ? 'pink' : 'indigo'}-500`);
+
+                if (appLogic.rangeAData && appLogic.rangeBData) {
+                    compareBtn.disabled = false;
+                    compareBtn.classList.remove('bg-gray-700', 'hover:bg-gray-800');
+                    compareBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+                }
+            },
+
+            startABComparison() {
+                if (!appLogic.rangeAData || !appLogic.rangeBData) {
+                    appLogic.showStatusMessage('Please select both Range A and Range B first.', 'bg-red-500');
+                    return;
+                }
+                
+                // Hide standard comparative analysis
+                document.getElementById('comparativeAnalysisContainer').classList.add('hidden');
+
+                // Render the comparison charts
+                appLogic.renderABComparisonCharts();
+                document.getElementById('comparisonReportContainer').classList.remove('hidden');
+
+                appLogic.showStatusMessage('A/B Comparison Report generated!', 'bg-green-600');
+            },
+
+            renderABComparisonCharts() {
+                const container = document.getElementById('comparisonChartGrid');
+                container.innerHTML = '';
+                
+                const activeFixedGoals = appLogic.TRACKER_AREAS.filter(area => 
+                    area !== 'mindset' && !(appLogic.customGoalDefinitions[area] && appLogic.customGoalDefinitions[area].deleted)
+                );
+                const allChartAreas = activeFixedGoals.concat(appLogic.customGoals);
+
+                Object.keys(appLogic.comparisonCharts).forEach(chart => {
+                    if (appLogic.comparisonCharts[chart]) { appLogic.comparisonCharts[chart].destroy(); }
+                });
+                appLogic.comparisonCharts = {};
+
+                allChartAreas.forEach(area => {
+                    const goalData = appLogic.dailyGoalData[area] || appLogic.DEFAULT_GOALS[area] || appLogic.customGoalDefinitions[area];
+                    if (!goalData) return;
+
+                    const labelsA = appLogic.rangeAData.labels;
+                    const trendA = labelsA.map(label => {
+                        const date = moment(appLogic.rangeAData.startDate).add(labelsA.indexOf(label), 'days').format('YYYY-MM-DD');
+                        return appLogic.rangeAData.dailyData[date] && appLogic.rangeAData.dailyData[date][area] !== undefined ? appLogic.rangeAData.dailyData[date][area] : 0;
+                    });
+                    
+                    const labelsB = appLogic.rangeBData.labels;
+                    const trendB = labelsB.map(label => {
+                        const date = moment(appLogic.rangeBData.startDate).add(labelsB.indexOf(label), 'days').format('YYYY-MM-DD');
+                        return appLogic.rangeBData.dailyData[date] && appLogic.rangeBData.dailyData[date][area] !== undefined ? appLogic.rangeBData.dailyData[date][area] : 0;
+                    });
+                    
+                    const chartCard = document.createElement('div');
+                    chartCard.classList.add('analysis-card', 'h-72', 'comparison-report-chart', 'col-span-1'); 
+                    chartCard.innerHTML = `<canvas id="comparisonChart_${area}"></canvas>`; 
+                    container.appendChild(chartCard); 
+                    
+                    appLogic.drawABComparisonChart(area, trendA, labelsA, trendB, labelsB, goalData.color);
+                });
+            },
+
+            drawABComparisonChart(area, trendA, labelsA, trendB, labelsB, colorCode) {
+                const ctx = document.getElementById(`comparisonChart_${area}`);
+                if (!ctx) return;
+                const context = ctx.getContext('2d');
+                
+                const areaName = area.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()); 
+                
+                const maxLen = Math.max(labelsA.length, labelsB.length);
+                const finalLabels = Array.from({ length: maxLen }, (_, i) => 
+                     labelsA[i] || labelsB[i] || ''
+                );
+                
+                const paddedTrendA = [...trendA, ...Array(maxLen - trendA.length).fill(null)];
+                const paddedTrendB = [...trendB, ...Array(maxLen - trendB.length).fill(null)];
+
+
+                appLogic.comparisonCharts[area] = new Chart(context, {
+                    type: 'line',
+                    data: {
+                        labels: finalLabels, 
+                        datasets: [
+                            { 
+                                label: `Range A (${appLogic.rangeAData.displayLabel})`, 
+                                data: paddedTrendA, 
+                                borderColor: appLogic.COLOR_MAP.pink_light, 
+                                backgroundColor: appLogic.COLOR_MAP.pink_light.replace('0.6)', '0.1)'), 
+                                fill: false, 
+                                tension: 0.2, 
+                                pointRadius: 3, 
+                                borderWidth: 3,
+                                spanGaps: true 
+                            },
+                            { 
+                                label: `Range B (${appLogic.rangeBData.displayLabel})`, 
+                                data: paddedTrendB, 
+                                borderColor: appLogic.COLOR_MAP.indigo_light, 
+                                backgroundColor: appLogic.COLOR_MAP.indigo_light.replace('0.6)', '0.1)'), 
+                                fill: false, 
+                                tension: 0.2, 
+                                pointRadius: 3, 
+                                borderWidth: 3,
+                                spanGaps: true
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'top' },
+                            title: { display: true, text: `${areaName} Performance Comparison`, color: '#4B5563', padding: { top: 10, bottom: 5 } }
+                        },
+                        scales: {
+                            x: { 
+                                grid: { display: false }, 
+                                title: { display: true, text: 'Day Index (A vs B)' },
+                                ticks: { autoSkip: true, maxRotation: 45, minRotation: 0 }
+                            },
+                            y: { 
+                                min: 0, 
+                                max: 100, 
+                                title: { display: true, text: 'Completion (%)' }
+                            }
+                        }
+                    }
+                });
+            },
+            
+            // --- STANDARD COMPARATIVE ANALYSIS LOGIC ---
+            getRangePerformanceForComparison(startDate, endDate) {
+                const dailyData = {};
+                
+                const activeFixedGoals = appLogic.TRACKER_AREAS.filter(area => 
+                    area === 'mindset' || 
+                    !(appLogic.customGoalDefinitions[area] && appLogic.customGoalDefinitions[area].deleted)
+                );
+                const areaKeys = activeFixedGoals.filter(a => a !== 'mindset').concat(appLogic.customGoals); 
+                
+                const labels = [];
+                let daysInPeriod = 0;
+                let overallTotalCompletion = 0;
+
+                for (let date = moment(startDate); date.isSameOrBefore(endDate); date.add(1, 'days')) {
+                    const dateKey = date.format('YYYY-MM-DD');
+                    labels.push(date.format('MM/DD'));
+                    
+                    const data = appLogic.history[dateKey];
+                    const result = {};
+                    let dailyCompletionSum = 0;
+                    let goalsTracked = 0;
+
+                    areaKeys.forEach(area => {
+                        const definition = appLogic.dailyGoalData[area] || appLogic.DEFAULT_GOALS[area] || appLogic.customGoalDefinitions[area];
+                        if (!definition) return;
+                        
+                        const areaData = data && data[area] ? data[area] : { progress: 0, goal: definition.goal, unit: definition.unit };
+                        
+                        const progress = areaData.progress || 0;
+                        const goal = areaData.goal || definition.goal; 
+                        
+                        let completion = goal > 0 ? Math.min(100, (progress / goal) * 100) : 0;
+                        
+                        // Handle character social check as a bonus (up to 10% extra credit if target is met)
+                        if (area === 'character' && (areaData.socialCheck || false) && completion >= 100) {
+                            completion = 110; 
+                        }
+                        
+                        result[area] = completion;
+                        dailyCompletionSum += completion;
+                        goalsTracked++;
+                    });
+                    
+                    if (goalsTracked > 0) {
+                        overallTotalCompletion += (dailyCompletionSum / goalsTracked);
+                    }
+                    
+                    dailyData[dateKey] = result;
+                    daysInPeriod++;
+                }
+                
+                const overallAvg = daysInPeriod > 0 ? (overallTotalCompletion / daysInPeriod) : 0;
+                const overallAvgText = Math.round(overallAvg) + '% Avg. Completion';
+
+
+                return { 
+                    dailyData: dailyData, 
+                    labels: labels, 
+                    days: daysInPeriod,
+                    overallAvgText: overallAvgText
+                };
+            },
+
+
             setAnalysisPeriod(period) {
                 appLogic.activePeriod = period;
+                
                 document.querySelectorAll('.period-btn').forEach(btn => btn.classList.remove('period-active'));
+
                 const activeBtn = document.getElementById(`${period}Btn`);
                 if (activeBtn) { activeBtn.classList.add('period-active'); }
+
+                document.getElementById('comparisonReportContainer').classList.add('hidden');
+                document.getElementById('comparativeAnalysisContainer').classList.remove('hidden');
+
                 appLogic.renderAnalysis();
             },
 
             getAnalysisDuration() { 
                 const today = moment().startOf('day');
                 let duration, previousDuration;
+                let currentPeriodStart, currentPeriodEnd, previousPeriodStart, previousPeriodEnd;
+                let currentLabel, previousLabel;
+
+                const end = today;
+
                 switch (appLogic.activePeriod) {
-                    case 'week': duration = 7; previousDuration = 7; break;
-                    case 'month': duration = 30; previousDuration = 30; break;
-                    case 'year': duration = 365; previousDuration = 365; break;
+                    case 'week': 
+                        duration = 7; previousDuration = 7;
+                        currentLabel = 'Current Week'; 
+                        previousLabel = 'Previous Week';
+                        break;
+                    case 'month': 
+                        duration = 30; previousDuration = 30; 
+                        currentLabel = 'Last 30 Days';
+                        previousLabel = 'Previous 30 Days';
+                        break;
+                    case 'year': 
+                        duration = 365; previousDuration = 365; 
+                        currentLabel = 'Last Year';
+                        previousLabel = 'Year Before';
+                        break;
                     case 'all':
                         const historyDates = Object.keys(appLogic.history).sort();
-                        if (historyDates.length === 0) { duration = 1; previousDuration = 0; break; }
-                        const firstDay = moment(historyDates[0], 'YYYY-MM-DD');
-                        const totalDays = today.diff(firstDay, 'days') + 1;
-                        duration = Math.ceil(totalDays / 2); previousDuration = Math.floor(totalDays / 2); 
+                        if (historyDates.length === 0) { 
+                            duration = 1; previousDuration = 0; 
+                        } else {
+                            const firstDay = moment(historyDates[0], 'YYYY-MM-DD').startOf('day');
+                            const totalDays = today.diff(firstDay, 'days') + 1;
+                            duration = Math.ceil(totalDays / 2); previousDuration = Math.floor(totalDays / 2); 
+                        }
+                        currentLabel = 'Second Half (All Time)';
+                        previousLabel = 'First Half (All Time)';
                         break;
-                    default: duration = 7; previousDuration = 7;
+                    default: 
+                        duration = 7; previousDuration = 7;
+                        currentLabel = 'Current Week'; 
+                        previousLabel = 'Previous Week';
                 }
-                return { duration, previousDuration };
+
+                currentPeriodStart = moment(end).subtract(duration - 1, 'days').startOf('day');
+                currentPeriodEnd = end;
+                previousPeriodEnd = moment(currentPeriodStart).subtract(1, 'second').startOf('day');
+                previousPeriodStart = moment(previousPeriodEnd).subtract(previousDuration - 1, 'days').startOf('day');
+                
+                return { 
+                    duration, 
+                    previousDuration, 
+                    currentPeriodStart, 
+                    currentPeriodEnd, 
+                    previousPeriodStart, 
+                    previousPeriodEnd,
+                    currentLabel,
+                    previousLabel
+                };
             },
+            
             getDailyPerformance(duration, endDate, startDate) { 
                 const dailyData = {};
-                const areaKeys = appLogic.TRACKER_AREAS;
-                const end = endDate || moment().startOf('day');
-                const start = startDate || moment(end).subtract(duration - 1, 'days').startOf('day');
+                
+                const activeFixedGoals = appLogic.TRACKER_AREAS.filter(area => 
+                    area === 'mindset' || 
+                    !(appLogic.customGoalDefinitions[area] && appLogic.customGoalDefinitions[area].deleted)
+                );
+                const areaKeys = activeFixedGoals.filter(a => a !== 'mindset').concat(appLogic.customGoals); 
+                
+                const end = endDate;
+                const start = startDate;
                 
                 const datesInPeriod = [];
                 for (let date = moment(start); date.isSameOrBefore(end); date.add(1, 'days')) {
@@ -590,53 +1516,85 @@
                     const data = appLogic.history[dateKey];
                     const result = {};
                     areaKeys.forEach(area => {
+                        const definition = appLogic.dailyGoalData[area] || appLogic.DEFAULT_GOALS[area] || appLogic.customGoalDefinitions[area];
+                        if (!definition) return;
+                        
                         const isMindset = area === 'mindset';
-                        const areaData = data && data[area] ? data[area] : appLogic.DEFAULT_GOALS[area];
+                        const areaData = data && data[area] ? data[area] : { progress: 0, goal: definition.goal, socialCheck: false };
+                        
                         let completion;
-                        if (isMindset) { completion = areaData.is100 ? 100 : 0; } 
-                        else {
+                        if (isMindset) {
+                            completion = areaData.is100 ? 100 : 0; 
+                        } else {
                             const progress = areaData.progress || 0;
-                            const goal = areaData.goal || appLogic.DEFAULT_GOALS[area].goal;
-                            completion = Math.min(100, (progress / goal) * 100);
+                            const goal = areaData.goal || definition.goal; 
+                            completion = goal > 0 ? Math.min(100, (progress / goal) * 100) : 0;
+                            
+                            // Apply character bonus if applicable
+                            if (area === 'character' && (areaData.socialCheck || false) && completion >= 100) {
+                                completion = 110; 
+                            }
                         }
-                        result[area] = completion;
+                        
+                        result[area] = completion; 
                     });
                     dailyData[dateKey] = result;
                 });
                 return dailyData;
             },
+            
             calculateAverages(periodData) { 
-                const total = { academic: 0, physical: 0, character: 0 };
+                const activeFixedGoals = appLogic.TRACKER_AREAS.filter(area => 
+                    area === 'mindset' || 
+                    !(appLogic.customGoalDefinitions[area] && appLogic.customGoalDefinitions[area].deleted)
+                );
+                const areaKeys = activeFixedGoals.filter(a => a !== 'mindset').concat(appLogic.customGoals); 
+                
+                const total = areaKeys.reduce((acc, area) => ({ ...acc, [area]: 0 }), {});
                 const days = Object.keys(periodData).length;
+                let validAreaCount = 0;
+                
                 Object.values(periodData).forEach(day => {
-                    appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
-                         total[area] += day[area] || 0;
+                    areaKeys.forEach(area => {
+                         const completionValue = day[area] === null || day[area] === undefined ? 0 : day[area];
+                         total[area] += completionValue;
                     });
                 });
+                
                 const avg = {};
-                appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
-                    avg[area] = days > 0 ? (total[area] / days) : 0;
+                areaKeys.forEach(area => {
+                    if (appLogic.dailyGoalData[area] || appLogic.DEFAULT_GOALS[area] || appLogic.customGoalDefinitions[area]) {
+                        avg[area] = days > 0 ? (total[area] / days) : 0;
+                        validAreaCount++;
+                    }
                 });
-                const overallAvg = days > 0 ? (Object.values(avg).reduce((sum, val) => sum + val, 0) / 3) : 0;
+                
+                const overallAvg = validAreaCount > 0 ? (Object.values(avg).reduce((sum, val) => sum + val, 0) / validAreaCount) : 0;
+                
                 return { avg: avg, overallAvg: overallAvg, days: days };
             },
+            
             renderAnalysis() { 
-                const { duration, previousDuration } = appLogic.getAnalysisDuration();
-                const today = moment().startOf('day');
-                let currentPeriodEnd = today;
-                let currentPeriodStart = moment(today).subtract(duration - 1, 'days');
-                let previousPeriodEnd = moment(currentPeriodStart).subtract(1, 'second');
-                let previousPeriodStart = moment(previousPeriodEnd).subtract(previousDuration - 1, 'days');
+                const { 
+                    duration, currentPeriodStart, currentPeriodEnd, 
+                    previousPeriodStart, previousPeriodEnd,
+                    currentLabel, previousLabel
+                } = appLogic.getAnalysisDuration();
+                
                 const currentDataRaw = appLogic.getDailyPerformance(duration, currentPeriodEnd, currentPeriodStart);
-                const previousDataRaw = appLogic.getDailyPerformance(previousDuration, previousPeriodEnd, previousPeriodStart);
+                const previousDataRaw = appLogic.getDailyPerformance(duration, previousPeriodEnd, previousPeriodStart);
+
                 const currentAverages = appLogic.calculateAverages(currentDataRaw);
                 const previousAverages = appLogic.calculateAverages(previousDataRaw);
+                
+                appLogic.activePeriodData = { currentDataRaw, previousDataRaw };
+
                 const currentAvgScore = Math.round(currentAverages.overallAvg);
                 const previousAvgScore = Math.round(previousAverages.overallAvg);
                 const diff = currentAvgScore - previousAvgScore;
 
-                document.getElementById('currentPeriodLabel').textContent = `${appLogic.activePeriod === 'all' ? 'Second Half' : 'Current Period'} (${currentAverages.days} Days)`;
-                document.getElementById('previousPeriodLabel').textContent = `${appLogic.activePeriod === 'all' ? 'First Half' : 'Previous Period'} (${previousAverages.days} Days)`;
+                document.getElementById('currentPeriodLabel').textContent = `${currentLabel} (${currentAverages.days} Days)`;
+                document.getElementById('previousPeriodLabel').textContent = `${previousLabel} (${previousAverages.days} Days)`;
                 document.getElementById('currentAvgScore').textContent = `${currentAvgScore}%`;
                 document.getElementById('previousAvgScore').textContent = `${previousAvgScore}%`;
                 
@@ -645,35 +1603,90 @@
                 diffElement.classList.toggle('text-green-600', diff >= 0);
                 diffElement.classList.toggle('text-red-600', diff < 0);
                 
-                const labels = Array.from({ length: currentAverages.days }, (_, i) => moment(currentPeriodStart).add(i, 'days').format('MM/DD'));
+                const labels = Array.from({ length: currentAverages.days }, (_, i) => {
+                     return moment(currentPeriodStart).add(i, 'days').format('MM/DD');
+                });
                 
-                appLogic.TRACKER_AREAS.filter(a => a !== 'mindset').forEach(area => {
-                    const currentTrend = labels.map(label => currentDataRaw[moment(label, 'MM/DD').format('YYYY-MM-DD')] ? currentDataRaw[moment(label, 'MM/DD').format('YYYY-MM-DD')][area] : NaN);
-                    const previousKeys = Object.keys(previousDataRaw).sort();
-                    const previousTrend = Array.from({ length: labels.length }, (_, i) => {
-                        const prevDateKey = previousKeys[i];
-                        return previousDataRaw[prevDateKey] ? previousDataRaw[prevDateKey][area] : NaN;
+                const activeFixedGoals = appLogic.TRACKER_AREAS.filter(area => 
+                    area === 'mindset' || 
+                    !(appLogic.customGoalDefinitions[area] && appLogic.customGoalDefinitions[area].deleted)
+                );
+                const allChartAreas = activeFixedGoals.filter(a => a !== 'mindset').concat(appLogic.customGoals); 
+
+                const analysisContainer = document.getElementById('chartGrid');
+                analysisContainer.innerHTML = ''; 
+
+                Object.keys(appLogic.charts).forEach(chart => {
+                    if (appLogic.charts[chart]) { appLogic.charts[chart].destroy(); }
+                });
+                appLogic.charts = {};
+
+
+                allChartAreas.forEach(area => {
+                    const data = appLogic.dailyGoalData[area] || appLogic.DEFAULT_GOALS[area] || appLogic.customGoalDefinitions[area];
+                    if (!data) return;
+
+                    const currentTrend = labels.map((label, i) => {
+                         const dateKey = moment(currentPeriodStart).add(i, 'days').format('YYYY-MM-DD');
+                         return currentDataRaw[dateKey] ? currentDataRaw[dateKey][area] : 0; 
                     });
-                    appLogic.drawChart(area, labels, currentTrend, previousTrend);
+                    
+                    const previousTrend = currentTrend.map((_, i) => {
+                        const prevDateKey = moment(previousPeriodStart).add(i, 'days').format('YYYY-MM-DD');
+                        return previousDataRaw[prevDateKey] && previousDataRaw[prevDateKey][area] !== undefined ? previousDataRaw[prevDateKey][area] : 0;
+                    });
+                    
+                    const chartCard = document.createElement('div');
+                    chartCard.classList.add('analysis-card', 'h-64', 'md:h-72', 'w-full', 'lg:w-auto', 'lg:col-span-1'); 
+                    chartCard.innerHTML = `<canvas id="${area}Chart"></canvas>`; 
+                    analysisContainer.appendChild(chartCard); 
+                    
+                    appLogic.drawChart(area, labels, currentTrend, previousTrend, data.color);
                 });
             },
 
-            drawChart(area, labels, currentTrend, previousTrend) { 
+            drawChart(area, labels, currentTrend, previousTrend, colorCode) { 
                 if (appLogic.charts[area]) { appLogic.charts[area].destroy(); }
-                const ctx = document.getElementById(`${area}Chart`).getContext('2d');
+                const ctx = document.getElementById(`${area}Chart`);
+                if (!ctx) return;
+                const context = ctx.getContext('2d');
+
                 let color, label;
-                switch (area) {
-                    case 'academic': color = 'rgba(52, 211, 153, 1)'; label = 'Academic Progress'; break;
-                    case 'physical': color = 'rgba(96, 165, 250, 1)'; label = 'Physical Progress'; break;
-                    case 'character': color = 'rgba(167, 139, 250, 1)'; label = 'Personality Progress'; break;
-                }
-                appLogic.charts[area] = new Chart(ctx, {
+                const areaName = area.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()); 
+
+                const colorMap = appLogic.COLOR_MAP;
+
+                color = colorMap[colorCode] || colorMap['indigo'];
+                label = `${areaName} Progress`;
+
+                appLogic.charts[area] = new Chart(context, {
                     type: 'line',
                     data: {
                         labels: labels,
                         datasets: [
-                            { label: 'Current Period', data: currentTrend, borderColor: color, backgroundColor: color.replace('1)', '0.1)'), fill: true, tension: 0.2, pointRadius: 3, borderWidth: 3 },
-                            { label: 'Previous Period', data: previousTrend, borderColor: color.replace('1)', '0.5)'), backgroundColor: 'transparent', borderDash: [5, 5], fill: false, tension: 0.2, pointRadius: 0, borderWidth: 2 }
+                            { 
+                                label: 'Current Period', 
+                                data: currentTrend, 
+                                borderColor: color, 
+                                backgroundColor: color.replace('1)', '0.1)'), 
+                                fill: true, 
+                                tension: 0.4, 
+                                pointRadius: 3, 
+                                borderWidth: 3,
+                                spanGaps: false 
+                            },
+                            { 
+                                label: 'Previous Period', 
+                                data: previousTrend, 
+                                borderColor: color.replace('1)', '0.5)'), 
+                                backgroundColor: 'transparent', 
+                                borderDash: [5, 5], 
+                                fill: false, 
+                                tension: 0.4, 
+                                pointRadius: 0, 
+                                borderWidth: 2,
+                                spanGaps: false
+                            }
                         ]
                     },
                     options: {
@@ -683,8 +1696,20 @@
                             title: { display: true, text: label, color: '#4B5563', padding: { top: 10, bottom: 5 } }
                         },
                         scales: {
-                            x: { grid: { display: false }, ticks: { autoSkip: true, maxRotation: 0, minRotation: 0 } },
-                            y: { min: 0, max: 100, title: { display: true, text: 'Completion (%)' } }
+                            x: { 
+                                grid: { display: false }, 
+                                ticks: { 
+                                    autoSkip: true, 
+                                    maxRotation: 0, 
+                                    minRotation: 0,
+                                }
+                            },
+                            y: { 
+                                min: 0, 
+                                max: 110, // Max set to 110 for social check bonus visibility
+                                title: { display: true, text: 'Completion (%)' },
+                                suggestedMin: 0
+                            }
                         }
                     }
                 });
@@ -694,35 +1719,31 @@
 
         // --- INITIALIZATION ---
         window.onload = async function() {
-            firebase.setLogLevel('debug');
+            setLogLevel('debug');
             
-            // 1. Initialize Firebase App (CRITICAL FIX: Uses the hardcoded config you provided)
             try {
-                // Initialize using the hardcoded config object
-                const app = firebase.initializeApp(hardcodedFirebaseConfig);
-                auth = app.auth();
-                db = app.firestore();
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
             } catch (e) {
-                console.error("FATAL: Firebase Initialization Error (Using Hardcoded Keys):", e);
-                appLogic.showStatusMessage('FATAL: Initialization failed. (Check console for API key error)', 'bg-red-900');
+                console.error("FATAL: Firebase Initialization Error:", e);
+                appLogic.showStatusMessage('FATAL: Initialization failed.', 'bg-red-900');
                 return;
             }
 
             let authStateHandled = false;
             appLogic.setLoading(true);
 
-            // 2. Attempt automatic sign-in (Custom Token or Anonymous)
             try {
                 if (initialAuthToken) {
-                    await auth.signInWithCustomToken(initialAuthToken);
+                    await signInWithCustomToken(auth, initialAuthToken);
                 } else {
-                    await auth.signInAnonymously();
+                    await signInAnonymously(auth);
                 }
             } catch (e) {
-                console.error("Initial Auth Error (Expected on first run):", e);
+                console.error("Initial Auth Error:", e);
             }
             
-            // 3. Add a Timeout Fallback (The Fix for the "Loading" loop)
             const loadingTimeout = setTimeout(() => {
                 if (!authStateHandled) {
                     appLogic.setLoading(false);
@@ -730,11 +1751,10 @@
                     document.getElementById('googleSignInBtn').disabled = false;
                     appLogic.showStatusMessage('Automatic sign-in failed. Please sign in with Google.', 'bg-yellow-600');
                 }
-            }, 5000); // 5 second grace period
+            }, 5000);
 
-            // 4. Main Auth Listener: This is the SINGLE SOURCE OF TRUTH for UI visibility.
-            auth.onAuthStateChanged((user) => {
-                clearTimeout(loadingTimeout); // Cancel the fallback if the listener fires
+            onAuthStateChanged(auth, (user) => {
+                clearTimeout(loadingTimeout);
                 authStateHandled = true;
 
                 appLogic.setLoading(false); 
@@ -742,13 +1762,10 @@
 
                 if (user) {
                     appLogic.setUserId(user.uid);
-                    // Show the Tracker
                     document.getElementById('authContainer').classList.add('hidden');
                     document.getElementById('trackerAppContainer').classList.remove('hidden');
                     appLogic.showStatusMessage('Successfully loaded dashboard.', 'bg-indigo-600');
                 } else {
-                    appLogic.setUserId(null); 
-                    // Show the Sign-In Screen
                     document.getElementById('authContainer').classList.remove('hidden');
                     document.getElementById('trackerAppContainer').classList.add('hidden');
                 }
